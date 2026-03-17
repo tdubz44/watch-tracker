@@ -1772,7 +1772,10 @@ async function callAssistant(messages){
 return data.choices?.[0]?.message?.content || "No response";
 }
 
-
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/watch-tracker/sw.js');
+}
+  
 </script>
 
 
