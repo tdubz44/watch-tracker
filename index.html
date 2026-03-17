@@ -1584,6 +1584,7 @@ const aiText = await callAssistant(messages);
 });
     
     const jsonAppliedMsg = parseAndApplyJSON(aiText);
+    console.log("JSON APPLIED:", jsonAppliedMsg);
     updateStats();
 renderWatching();
 renderSearch('');
