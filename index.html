@@ -1354,6 +1354,19 @@ function normalizeFields(fields) {
     'watched_date': 'date_watched', 'watched date': 'date_watched',
     'date watched': 'date_watched', 'completed': 'date_watched',
   };
+    const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    const norm = keyMap[k.toLowerCase()] || k;
+if (norm === 'status' && typeof v === 'string') {
+  out[norm] =
+    v.charAt(0).toUpperCase() +
+    v.slice(1).toLowerCase();
+} else {
+  out[norm] = v;
+}
+  }
+  return out;
+}
 
   async function fetchTMDbData(title) {
   const apiKey = "eedc718be2818766f1c16eafc83fee0a";
@@ -1376,20 +1389,6 @@ function normalizeFields(fields) {
     genre_ids: result.genre_ids || [],
     release_date: result.release_date || result.first_air_date || ""
   };
-}
-  
-  const out = {};
-  for (const [k, v] of Object.entries(fields)) {
-    const norm = keyMap[k.toLowerCase()] || k;
-if (norm === 'status' && typeof v === 'string') {
-  out[norm] =
-    v.charAt(0).toUpperCase() +
-    v.slice(1).toLowerCase();
-} else {
-  out[norm] = v;
-}
-  }
-  return out;
 }
 
 async function applyUpdates(updates) {
