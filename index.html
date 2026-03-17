@@ -1803,15 +1803,21 @@ async function init() {
 
   // Boot confirmation in chat
   const chatWindow = document.getElementById('chatWindow');
-  chatWindow.innerHTML = `<div class="msg ai">
-    <div class="msg-avatar">🤖</div>
-    <div class="msg-bubble"><strong>App rendered ✓</strong>  Storage initialized ✓  Ready to upload CSV ✓
+chatWindow.innerHTML = `<div class="msg ai">
+  <div class="msg-avatar">🤖</div>
+  <div class="msg-bubble">
+    <strong>App rendered ✓</strong> Storage initialized ✓ Ready to upload CSV ✓<br><br>
 
-Library loaded: <strong>${library.length} titles</strong> — ${library.filter(x=>x.status==='Watching').length} watching, ${library.filter(x=>x.status==='Watchlist').length} in queue.
+    Library loaded: <strong>${library.length} titles</strong> — 
+    ${library.filter(x => x.status === 'watching').length} watching, 
+    ${library.filter(x => x.status === 'watchlist').length} in queue.<br><br>
 
-${library.length === 0 ? 'Your library is empty — head to the Upload tab to import a CSV, or just start chatting and I\'ll help you build it up!' : 'What are we doing today? Hit a quick action or ask me anything.'}
-    </div>
-  </div>`;
+    ${library.length === 0 
+      ? "Your library is empty — head to the Upload tab to import a CSV, or just start chatting and I'll help you build it!"
+      : "What are we doing today? Hit a quick action or ask me anything."
+    }
+  </div>
+</div>`;
 }
 
 </script>
