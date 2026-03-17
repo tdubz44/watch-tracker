@@ -1527,19 +1527,23 @@ async function sendMessage(userText) {
   const sendBtn = document.getElementById('sendBtn');
   const chatInput = document.getElementById('chatInput');
 
+    const libraryContext = buildLibraryContext();
+  const userMsgWithContext = `${libraryContext}\n\n---\nUSER MESSAGE:\n${userText}`;
+  
   addMsg('user', userText);
+  messages.push({
+  role: "user",
+  content: userMsgWithContext
+});
   chatInput.value = '';
   chatInput.style.height = 'auto';
   sendBtn.disabled = true;
   addTyping();
 
-  const libraryContext = buildLibraryContext();
-  const userMsgWithContext = `${libraryContext}\n\n---\nUSER MESSAGE:\n${userText}`;
 
   convoHistory.push({ role: 'user', content: userMsgWithContext });
 
   try {
-    let messages = convoHistory.slice(-20);
     const response = await fetch('https://icy-feather-bc92.twalsh.workers.dev/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1555,6 +1559,10 @@ async function sendMessage(userText) {
 
 
 const aiText = await callAssistant(messages);
+    messages.push({
+  role: "assistant",
+  content: aiText
+});
     
     const jsonAppliedMsg = parseAndApplyJSON(aiText);
     convoHistory.push({ role: 'assistant', content: aiText });
