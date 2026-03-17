@@ -1357,7 +1357,13 @@ function normalizeFields(fields) {
   const out = {};
   for (const [k, v] of Object.entries(fields)) {
     const norm = keyMap[k.toLowerCase()] || k;
-    out[norm] = v;
+if (norm === 'status' && typeof v === 'string') {
+  out[norm] =
+    v.charAt(0).toUpperCase() +
+    v.slice(1).toLowerCase();
+} else {
+  out[norm] = v;
+}
   }
   return out;
 }
