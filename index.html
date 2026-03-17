@@ -1457,6 +1457,7 @@ const newItem = {
 library.push(newItem);
         
         const tmdbData = await fetchTMDbData(op.title);
+        console.log("TMDB RESULT:", tmdbData);
 
 if (tmdbData) {
   const item = newItem;
