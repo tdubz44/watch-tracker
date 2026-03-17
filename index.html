@@ -1378,15 +1378,23 @@ function applyUpdates(updates) {
       updated++;
     } else if (op.action === 'add') {
       if (existing) {
-        const fields = normalizeFields(op.fields || {});
+const rawFields = op.fields || {};
+const fields = normalizeFields({
+  ...rawFields,
+  status: op.status || rawFields.status
+});        
         let changed = false;
         for (const [k,v] of Object.entries(fields)) {
           if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
         }
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
-const fields = normalizeFields(op.fields || {});
-const status = fields.status
+const rawFields = op.fields || {};
+const fields = normalizeFields({
+  ...rawFields,
+  status: op.status || rawFields.status
+});
+        const status = fields.status
   ? fields.status.charAt(0).toUpperCase() + fields.status.slice(1).toLowerCase()
   : 'Watchlist';
 
