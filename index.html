@@ -1755,14 +1755,11 @@ function maybeDailyBackup(library){
 
 // ---- OpenAI Assistant Helper ----
 async function callAssistant(messages){
-  const apiKey = await getOpenAIKey();
-  if (!apiKey) return;
 
-  const res = await fetch("https://openai-proxy.tdubz.workers.dev/v1/chat/completions", {
+  const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": "Bearer " + apiKey
     },
     body: JSON.stringify({
       model: "gpt-4.1-mini",
