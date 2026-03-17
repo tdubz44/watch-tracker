@@ -1,28 +1,50 @@
-const CACHE_NAME = "watch-tracker-v1";
+const CACHE_NAME = "watch-tracker-v2";
 
-const FILES_TO_CACHE = [
-  "./watch_tracker_installable.html",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png"
+const URLS_TO_CACHE = [
+  "/watch-tracker/",
+  "/watch-tracker/index.html",
+  "/watch-tracker/manifest.json",
+  "/watch-tracker/icon-192.png",
+  "/watch-tracker/icon-512.png"
 ];
 
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(FILES_TO_CACHE);
-    })
-  );
+// Install
+self.addEventListener("install", (event) => {
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(URLS_TO_CACHE))
+  );
 });
 
-self.addEventListener("activate", event => {
-  event.waitUntil(self.clients.claim());
+// Activate
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      )
+    )
+  );
+  self.clients.claim();
 });
 
-self.addEventListener("fetch", event => {
+// Fetch
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch("/watch-tracker/index.html").catch(() =>
+        caches.match("/watch-tracker/index.html")
+      )
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(response => {
+    caches.match(event.request).then((response) => {
       return response || fetch(event.request);
     })
   );
