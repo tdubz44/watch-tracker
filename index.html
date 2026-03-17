@@ -1540,7 +1540,7 @@ async function sendMessage(userText) {
 
   try {
     let messages = convoHistory.slice(-20);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://icy-feather-bc92.twalsh.workers.dev/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1772,27 +1772,11 @@ async function callAssistant(messages){
 return data.choices?.[0]?.message?.content || "No response";
 }
 
-async function getOpenAIKey(){
-  let key = await window.storage.get("openai_api_key");
-  key = key ? key.value : null;
 
-  if(!key){
-    key = prompt("Enter your OpenAI API key");
-    if(key) await window.storage.set("openai_api_key", key);
-  }
-
-  return key;
-}
 </script>
 
 
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(() => console.log("Service Worker registered"))
-    .catch(err => console.warn("Service worker failed", err));
-}
-</script>
+
 
 </body>
 </html>
