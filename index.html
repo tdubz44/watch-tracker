@@ -1385,7 +1385,16 @@ function applyUpdates(updates) {
         }
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
-        library.push({ title: op.title, status: 'Watchlist', format: '', genre: '', subgenres: '', tone: '', platform: '', rating: '', lifecycle: '', progress: '', year: '', notes: '', date_watched: '', ...normalizeFields(op.fields || {}) });
+const fields = normalizeFields(op.fields || {});
+const status = fields.status
+  ? fields.status.charAt(0).toUpperCase() + fields.status.slice(1).toLowerCase()
+  : 'Watchlist';
+
+library.push({
+  title: op.title,
+  ...fields,
+  status
+});
         added++;
       }
     } else { skipped++; skippedTitles.push(op.title + ' (unknown action)'); }
