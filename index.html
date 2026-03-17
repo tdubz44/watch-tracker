@@ -1768,7 +1768,9 @@ async function callAssistant(messages){
   })
 });
 
-  const data = await res.json();
+ const data = await res.json();
+console.log("RAW DATA:", data);
+
 return JSON.stringify(data);
 }
 
