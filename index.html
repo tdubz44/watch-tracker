@@ -1756,29 +1756,32 @@ function maybeDailyBackup(library){
 // ---- OpenAI Assistant Helper ----
 async function callAssistant(messages){
   const apiKey = await getOpenAIKey();
-if (!apiKey) return;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":"Bearer " + apiKey
+  if (!apiKey) return;
+
+  const res = await fetch("https://openai-proxy.tdubz.workers.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + apiKey
     },
     body: JSON.stringify({
-      model:"gpt-4.1-mini",
-      messages:messages
+      model: "gpt-4.1-mini",
+      messages: messages
     })
   });
+
   return res.json();
 }
 
 async function getOpenAIKey(){
   let key = await window.storage.get("openai_api_key");
+  key = key ? key.value : null;
+
   if(!key){
     key = prompt("Enter your OpenAI API key");
     if(key) await window.storage.set("openai_api_key", key);
   }
-  return key;
-}
+
   return key;
 }
 </script>
