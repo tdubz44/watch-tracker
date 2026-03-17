@@ -1448,15 +1448,18 @@ const fields = normalizeFields(merged);
   ? fields.status.charAt(0).toUpperCase() + fields.status.slice(1).toLowerCase()
   : 'Watchlist';
 
-library.push({
+const newItem = {
   title: op.title,
   ...fields,
   status
-});
+};
+
+library.push(newItem);
+        
         const tmdbData = await fetchTMDbData(op.title);
 
 if (tmdbData) {
-  const item = library.find(x => x.title === op.title);
+  const item = newItem;
 
   if (item) {
     if (!item.tmdb_id) item.tmdb_id = tmdbData.tmdb_id;
