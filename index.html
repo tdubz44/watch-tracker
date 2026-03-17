@@ -1767,7 +1767,8 @@ async function callAssistant(messages){
     })
   });
 
-  return res.json();
+  const data = await res.json();
+return data.choices?.[0]?.message?.content || "No response";
 }
 
 async function getOpenAIKey(){
