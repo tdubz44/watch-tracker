@@ -1756,7 +1756,7 @@ function maybeDailyBackup(library){
 // ---- OpenAI Assistant Helper ----
 async function callAssistant(messages){
 
-  const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev", {
+  const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev/", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
