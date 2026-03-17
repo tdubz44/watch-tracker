@@ -1147,6 +1147,7 @@ function importRows(rows, statusEl) {
   }
 
   saveLibrary();
+localStorage.setItem("watchTrackerLibrary", JSON.stringify(library));
   updateStats();
   refreshSearch();
   renderWatching();
