@@ -1377,10 +1377,15 @@ function applyUpdates(updates) {
     if (op.action === 'update') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
 const rawFields = op.fields || {};
-const fields = normalizeFields({
-  ...rawFields,
-  status: op.status || rawFields.status
-});
+const merged = {
+  ...rawFields
+};
+
+if (op.status) {
+  merged.status = op.status;
+}
+
+const fields = normalizeFields(merged);
 
 Object.assign(existing, fields);
       updated++;
@@ -1391,10 +1396,15 @@ Object.assign(existing, fields);
     } else if (op.action === 'add') {
       if (existing) {
 const rawFields = op.fields || {};
-const fields = normalizeFields({
-  ...rawFields,
-  status: op.status || rawFields.status
-});        
+const merged = {
+  ...rawFields
+};
+
+if (op.status) {
+  merged.status = op.status;
+}
+
+const fields = normalizeFields(merged);
         let changed = false;
         for (const [k,v] of Object.entries(fields)) {
           if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
@@ -1402,10 +1412,15 @@ const fields = normalizeFields({
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
 const rawFields = op.fields || {};
-const fields = normalizeFields({
-  ...rawFields,
-  status: op.status || rawFields.status
-});
+const merged = {
+  ...rawFields
+};
+
+if (op.status) {
+  merged.status = op.status;
+}
+
+const fields = normalizeFields(merged);
         const status = fields.status
   ? fields.status.charAt(0).toUpperCase() + fields.status.slice(1).toLowerCase()
   : 'Watchlist';
