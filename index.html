@@ -1768,9 +1768,8 @@ async function callAssistant(messages){
 });
 
  const data = await res.json();
-console.log("RAW DATA:", data);
 
-return JSON.stringify(data);
+return data.choices?.[0]?.message?.content || "No response";
 }
 
 
