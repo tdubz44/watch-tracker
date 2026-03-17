@@ -1491,6 +1491,26 @@ CRITICAL INSTRUCTIONS
 
 When the user wants to modify their library (add, update, note, etc.), you MUST return ONLY a JSON block.
 
+When updating or adding a title:
+
+- Always extract structured fields when present:
+  - platform
+  - tone
+  - progress
+  - genre
+  - subgenres
+  - rating
+  - lifecycle
+
+- Do NOT put structured data into "notes"
+
+- "notes" should only be used for freeform comments that do not match any structured field
+
+- If the user provides multiple attributes, split them into proper fields instead of combining them
+
+Never store structured data inside "notes".
+Always map it to the correct field.
+
 Format EXACTLY like this:
 
 <<<JSON
@@ -1499,6 +1519,15 @@ Format EXACTLY like this:
     "action": "add" | "update" | "note",
     "title": "Title Name",
     "status": "watching" | "watched" | "watchlist" | "abandoned",
+    "fields": {
+      "platform": "optional",
+      "tone": "optional",
+      "progress": "optional",
+      "genre": "optional",
+      "subgenres": "optional",
+      "rating": "optional",
+      "lifecycle": "optional"
+    },
     "note": "optional note"
   }
 ]
