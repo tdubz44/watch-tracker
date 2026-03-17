@@ -1464,9 +1464,15 @@ if (tmdbData) {
 
   if (item) {
     if (!item.tmdb_id) item.tmdb_id = tmdbData.tmdb_id;
-    if (!item.release_date) item.release_date = tmdbData.release_date;
-  }
+if (!item.year && tmdbData.release_date) {
+  item.year = tmdbData.release_date.split('-')[0];
 }
+
+if (!item.release_date && tmdbData.release_date) {
+  item.release_date = tmdbData.release_date;
+}
+
+if (!item.tmdb) item.tmdb = tmdbData;
         
         added++;
       }
