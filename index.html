@@ -810,7 +810,7 @@ async function saveConvo() {
 // ============================================================
 function statusBadgeClass(s) {
   const m = { 'Watched':'watched','Watching':'watching','Watchlist':'watchlist','Abandoned':'abandoned' };
-  return 'badge badge-'+(m[s]||'watchlist');
+   'badge badge-'+(m[s]||'watchlist');
 }
 function formatBadgeClass(f) {
   const m = { 'Movie':'movie','Series':'series','Miniseries':'miniseries' };
@@ -1769,10 +1769,7 @@ async function callAssistant(messages){
 });
 
   const data = await res.json();
-return data.choices?.[0]?.message?.content 
-    || data.choices?.[0]?.text 
-    || data.response
-    || JSON.stringify(data);
+return JSON.stringify(data);
 }
 
 
