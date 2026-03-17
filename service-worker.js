@@ -33,19 +33,3 @@ self.addEventListener("activate", (event) => {
 });
 
 // Fetch
-self.addEventListener("fetch", (event) => {
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch("/watch-tracker/index.html").catch(() =>
-        caches.match("/watch-tracker/index.html")
-      )
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
-});
