@@ -1,7 +1,8 @@
 {
   "name": "TDubz Watch Tracker",
   "short_name": "Watch Tracker",
-  "start_url": "./watch_tracker_installable.html",
+"start_url": "/watch-tracker/watch_tracker_installable.html",
+  "scope": "/watch-tracker/"
   "display": "standalone",
   "background_color": "#0f1226",
   "theme_color": "#0f1226",
