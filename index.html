@@ -1565,6 +1565,9 @@ const aiText = await callAssistant(messages);
 });
     
     const jsonAppliedMsg = parseAndApplyJSON(aiText);
+    updateStats();
+renderWatching();
+renderSearch('');
     convoHistory.push({ role: 'assistant', content: aiText });
     await saveConvo();
 
