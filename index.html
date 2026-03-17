@@ -1757,15 +1757,16 @@ function maybeDailyBackup(library){
 async function callAssistant(messages){
 
   const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev/", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      messages: messages
-    })
-  });
+  method: "POST",
+  mode: "cors",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    model: "gpt-4.1-mini",
+    messages: messages
+  })
+});
 
   const data = await res.json();
 return data.choices?.[0]?.message?.content || "No response";
