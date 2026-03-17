@@ -719,6 +719,9 @@ Upload your CSV first if you have one, then hit one of the quick actions or just
 </div>
 
 <script>
+
+console.log("FILE LOADED");
+  
 // ============================================================
 // CONSTANTS
 // ============================================================
@@ -1507,6 +1510,32 @@ Response:
 }
 `;
 
+function addMsg(role, text, jsonApplied) {
+  const chatWindow = document.getElementById('chatWindow');
+  const div = document.createElement('div');
+  div.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
+
+  // ✅ keep your original avatar logic EXACTLY as you had it
+  const avatar = role === 'user' ? '🎬' : '🤖';
+
+  const displayText = text
+    .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // remove JSON block
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .trim();
+
+  div.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">
+      ${displayText.replace(/\n/g, '<br>')}
+      ${jsonApplied ? `<div class="json-msg">✔ ${jsonApplied}</div>` : ''}
+    </div>
+  `;
+
+  chatWindow.appendChild(div);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+  
 function addTyping() {
   const chatWindow = document.getElementById('chatWindow');
   const div = document.createElement('div');
