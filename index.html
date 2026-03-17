@@ -1631,12 +1631,12 @@ function removeTyping() {
   if (t) t.remove();
 }
 
-function parseAndApplyJSON(text) {
+async function parseAndApplyJSON(text) {
   const match = text.match(/<<<JSON([\s\S]*?)JSON>>>/);
   if (!match) return null;
   try {
     const updates = JSON.parse(match[1].trim());
-    const result = applyUpdates(updates);
+    const result = await applyUpdates(updates);
     saveLibrary();
     updateStats();
     refreshSearch();
@@ -1693,7 +1693,8 @@ const aiText = await callAssistant(messages);
   content: aiText
 });
     
-    const jsonAppliedMsg = parseAndApplyJSON(aiText);
+    const jsonAppliedMsg = await
+      parseAndApplyJSON(aiText);
     console.log("JSON APPLIED:", jsonAppliedMsg);
     updateStats();
 renderWatching();
