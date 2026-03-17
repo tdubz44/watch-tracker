@@ -1433,61 +1433,79 @@ ${allTitles || 'Empty library'}
 Format of each entry: Title [Format|Status|Platform|Genre|Tone|Lifecycle|Rating|Progress|Year|IMDbID]`;
 }
 
-const SYSTEM_PROMPT = `You are a personal watch tracker assistant managing the user's watchlist and making recommendations.
+const SYSTEM_PROMPT = `
+You are a watch tracker assistant.
 
-TASTE PROFILE:
-- Core: Character-driven sci-fi mysteries where reality slowly reveals its rules
-- Lane 1 (strongest): Reality-instability sci-fi — Dark, Severance, Fringe, The OA, The Devil's Hour, From
-- Lane 2: Philosophical speculative sci-fi — Arrival, Ex Machina, Children of Men, The Expanse
-- Lane 3 (occasional): High-concept genre comedy — Upload, Extraordinary
-- Themes: Time loops, Parallel realities, Identity-bending, Reality instability, Memory manipulation, Existential sci-fi, Near-future speculative tech, Cosmic/metaphysical sci-fi, Mystery-driven sci-fi, Puzzle-box storytelling
-- Viewing style: Serial immersion, movies as palette cleansers, concept-first, slow burn OK
-- NEVER recommend: Low-concept procedurals, sitcoms without genre hook, reality TV
-- Streaming (Canada): Netflix, Prime, Crave, Disney, Apple TV
-- Noted fave actor: Miles Teller — flag relevant titles
-- Valid Status: Watched, Watching, Watchlist, Abandoned
+You help manage a user's watchlist and library.
 
-RULES:
-- Never recommend Watched or Abandoned titles
-- Check duplicates before adding (use the ALL TITLES pipe-separated list)
-- Don't overwrite populated metadata fields
-- Confirm every change
-- Flag Cancelled/Ongoing on recs; flag Apple TV as time-sensitive
-- Paywalled Apple TV titles (Awake, The Kettering Incident) require additional fee
-- Unclear Canadian availability: say so explicitly
+====================
+CRITICAL INSTRUCTIONS
+====================
 
-VALID FIELD VALUES:
-- Status: Watched, Watching, Watchlist, Abandoned
-- Format: Movie, Series, Miniseries
-- Platform (Canada): Netflix, Prime, Crave, Disney, Apple TV
-- Primary Genre (one): Comedy, Drama, Action, Sci-Fi, Documentary, Adventure, Crime, Animation, Horror, Romance, Fantasy, Mystery, Thriller
-- Lifecycle (Series/Miniseries only, never Movies): Finished, Ongoing, Cancelled
-- Subgenres: comma-separated tags, no tone words, no duplicating primary genre
-- Tone: separate field — e.g. Slow-Burn, Dark, Philosophical, Character-Driven, Cerebral, Atmospheric, Mind-Bending, Gritty
+When the user wants to modify their library (add, update, note, etc.), you MUST return ONLY a JSON object.
 
-When giving data updates respond with:
-1. JSON block FIRST: <<<JSON [...] JSON>>> with array of {"action":"update"|"add","title":"...","fields":{...}}
-2. Then your conversational response below the JSON block
+DO NOT include any explanation before or after JSON.
 
-If no data changes needed, skip the JSON block entirely.`;
+====================
+SUPPORTED ACTIONS
+====================
 
-function addMsg(role, text, jsonApplied) {
-  const chatWindow = document.getElementById('chatWindow');
-  const div = document.createElement('div');
-  div.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
-  const avatar = role === 'user' ? '🎬' : '🤖';
-  const displayText = text
-    .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // strip raw JSON block from display
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .trim();
-  div.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
-    <div class="msg-bubble">${displayText.replace(/\n/g,'<br>')}${jsonApplied ? `<div class="json-applied-badge">✓ ${jsonApplied} applied automatically</div>` : ''}</div>
-  `;
-  chatWindow.appendChild(div);
-  chatWindow.scrollTop = chatWindow.scrollHeight;
+1. Add a title:
+{
+  "action": "add",
+  "title": "Title Name",
+  "status": "watching"
 }
+
+2. Update a title:
+{
+  "action": "update",
+  "title": "Title Name",
+  "status": "completed"
+}
+
+3. Add a note:
+{
+  "action": "note",
+  "title": "Title Name",
+  "note": "Some note"
+}
+
+====================
+RULES
+====================
+
+- If the title does NOT exist and user tries to update it → ADD instead
+- Do NOT ask for confirmation
+- Do NOT repeat the same question
+- Always act immediately
+
+====================
+NON-ACTION REQUESTS
+====================
+
+If the user asks for recommendations or general info, you can respond normally.
+
+====================
+EXAMPLES
+====================
+
+User: Add Murderbot  
+Response:
+{
+  "action": "add",
+  "title": "Murderbot",
+  "status": "watching"
+}
+
+User: Mark Murderbot completed  
+Response:
+{
+  "action": "update",
+  "title": "Murderbot",
+  "status": "Watched"
+}
+`;
 
 function addTyping() {
   const chatWindow = document.getElementById('chatWindow');
