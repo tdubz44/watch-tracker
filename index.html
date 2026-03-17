@@ -839,7 +839,7 @@ document.getElementById('tabBar').addEventListener('click', e => {
   btn.classList.add('active');
   currentTab = btn.dataset.tab;
   document.getElementById('tab-'+currentTab).classList.add('active');
-  if (currentTab === 'search') Search('');
+  if (currentTab === 'search') renderSearch('');
   if (currentTab === 'watching') renderWatching();
 });
 
