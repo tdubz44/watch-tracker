@@ -1529,7 +1529,8 @@ async function sendMessage(userText) {
 
     const libraryContext = buildLibraryContext();
   const userMsgWithContext = `${libraryContext}\n\n---\nUSER MESSAGE:\n${userText}`;
-  
+
+  let messages = convoHistory.slice(-20);
   addMsg('user', userText);
   messages.push({
   role: "user",
