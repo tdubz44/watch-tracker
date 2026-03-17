@@ -1577,6 +1577,7 @@ async function sendMessage(userText) {
 
 
 const aiText = await callAssistant(messages);
+    console.log("AI RESPONSE:", aiText);
     messages.push({
   role: "assistant",
   content: aiText
