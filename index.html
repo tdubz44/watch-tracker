@@ -1467,15 +1467,27 @@ VALID FIELD VALUES:
 
 When giving data updates respond with:
 
-1. JSON block FIRST: <<<JSON [...] JSON>>> with array of objects using:
+1. JSON block FIRST: <<<JSON [...] JSON>>> with an ARRAY of objects using:
    - "action": "update" | "add" | "note"
    - "title": "..."
    - "status": "watching" | "watched" | "watchlist" | "abandoned"
-   - optional: any additional fields at the TOP LEVEL (NOT inside "fields")
+
+   Optional fields (include when known):
+   - format
+   - platform
+   - primaryGenre
+   - subgenres
+   - tone
+   - lifecycle
+   - year
+
+   All fields must be TOP LEVEL.
+   Do NOT use a "fields" object.
+   Always return an ARRAY, even for one item.
 
 2. Then your conversational response below the JSON block
 
-Do NOT use a "fields" object. All properties must be top-level.
+All properties must be top-level.
 
 If no data changes needed, skip the JSON block entirely.`;
 
