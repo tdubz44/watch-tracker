@@ -1585,8 +1585,15 @@ const aiText =
     .map(b => b.text)
     .join('') ||
   JSON.stringify(data, null, 2);
+
+console.log('AI TEXT:', aiText);
     
-    const jsonAppliedMsg = parseAndApplyJSON(aiText);
+const cleaned = aiText
+  .replace(/\\n/g, '')
+  .replace(/\\"/g, '"')
+  .trim();
+
+const jsonAppliedMsg = parseAndApplyJSON(cleaned);
     convoHistory.push({ role: 'assistant', content: aiText });
     await saveConvo();
 
