@@ -1778,12 +1778,13 @@ if (pendingSelection) {
     library.push(newItem);
     saveLibrary();
 
-    addMsg('assistant', `Added "${newItem.title}" successfully ✅`);
+    addMsg('assistant', `Added "${newItem.title}" (${newItem.year}) successfully ✅`);
 
     pendingSelection = null;
-    return;
+    
   } else {
     addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
+  }
     return;
   }
 }
