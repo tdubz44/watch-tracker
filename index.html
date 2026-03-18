@@ -1585,7 +1585,10 @@ messages: [
     if (data.error) throw new Error(data.error.message);
 
 const aiText =
-  data.choices?.[0]?.message?.content ||
+  data.content
+    ?.filter(b => b.type === 'text')
+    .map(b => b.text)
+    .join('') ||
   'Sorry, I got an empty response.';
     
     const jsonAppliedMsg = parseAndApplyJSON(aiText);
