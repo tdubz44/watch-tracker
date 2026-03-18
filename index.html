@@ -1737,8 +1737,9 @@ const updates = Array.isArray(parsed) ? parsed : [parsed];
 async function sendMessage(userText) {
   if (!userText.trim()) return;
 
-const tmdbData = await fetchTMDbData(userText);
-console.log("TMDB RESULT:", tmdbData);
+const cleanTitle = userText.replace(/^add\s+/i, '').trim();
+const tmdbData = await fetchTMDbData(cleanTitle);
+  console.log("TMDB RESULT:", tmdbData);
 
 // Multiple results → stop
 if (tmdbData?.results?.length > 1) {
