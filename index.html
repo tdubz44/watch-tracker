@@ -1474,27 +1474,6 @@ const newItem = {
   ...normalized,
   status: normalized.status || 'Watchlist'
 };
-
-const tmdbData = await fetchTMDbData(op.title);
-console.log("TMDB RESULT:", tmdbData);
-
-// Multiple results → stop
-if (tmdbData?.results?.length > 1) {
-  const results = tmdbData.results.slice(0, 5);
-
-  pendingSelection = {
-    results,
-    normalized: newItem
-  };
-
-  const options = results.map((r, i) => {
-    const year = (r.release_date || r.first_air_date || "").split("-")[0];
-    return `${i + 1}. ${r.title || r.name} (${year})`;
-  }).join("\n");
-
-  addMsg('assistant', `Multiple matches found:\n\n${options}\n\nReply with a number (1-${results.length})`);
-
-  return;
 }
 
 // Single result → enrich
@@ -1759,6 +1738,28 @@ const updates = Array.isArray(parsed) ? parsed : [parsed];
 async function sendMessage(userText) {
   if (!userText.trim()) return;
 
+const tmdbData = await fetchTMDbData(userText);
+console.log("TMDB RESULT:", tmdbData);
+
+// Multiple results → stop
+if (tmdbData?.results?.length > 1) {
+  const results = tmdbData.results.slice(0, 5);
+
+  pendingSelection = {
+    results,
+    normalized: { status: 'Watchlist' }
+  };
+
+  const options = results.map((r, i) => {
+    const year = (r.release_date || r.first_air_date || "").split("-")[0];
+    return `${i + 1}. ${r.title || r.name} (${year})`;
+  }).join("\n");
+
+  addMsg('assistant', `Multiple matches found:\n\n${options}\n\nReply with a number (1-${results.length})`);
+
+  return;
+}
+  
 if (pendingSelection) {
   addMsg('user', userText);
   
