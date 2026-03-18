@@ -1417,7 +1417,7 @@ if (out.status) {
   return out;
 }
 
-function applyUpdates(updates) {
+async function applyUpdates(updates) {
   let added=0, updated=0, skipped=0;
   const skippedTitles = [];
   for (const op of updates) {
@@ -1468,12 +1468,57 @@ console.log('RAW FIELDS:', rawFields);
 const normalized = normalizeFields(rawFields);
 console.log('NORMALIZED:', normalized);
         
-        library.push({ title: op.title, status: 'Watchlist', format: '', genre: '', subgenres: '', tone: '', platform: '', rating: '', lifecycle: '', progress: '', year: '', notes: '', date_watched: '', ...normalizeFields(op.fields || op) });
-        added++;
+const newItem = {
+  title: op.title,
+  ...normalized,
+  status: normalized.status || 'Watchlist'
+};
+
+library.push(newItem);
+added++;
+
+const tmdbData = await fetchTMDbData(op.title);
+console.log("TMDB RESULT:", tmdbData);
+
+// Multiple results → stop
+if (tmdbData?.results?.length > 1) {
+  const options = tmdbData.results.slice(0, 5).map((r, i) => {
+    const year = (r.release_date || r.first_air_date || "").split("-")[0];
+    return `${i + 1}. ${r.title || r.name} (${year})`;
+  }).join("\n");
+
+  alert(`Multiple matches found:\n\n${options}`);
+  return { added: 0, updated: 0, skipped: 1, skippedTitles: [op.title + " (ambiguous)"] };
+}
+
+// Single result → enrich
+if (tmdbData?.results?.length === 1) {
+  const r = tmdbData.results[0];
+
+  if (!newItem.year && (r.release_date || r.first_air_date)) {
+    newItem.year = (r.release_date || r.first_air_date).split("-")[0];
+  }
+}
+        
       }
     } else { skipped++; skippedTitles.push(op.title + ' (unknown action)'); }
   }
   return { added, updated, skipped, skippedTitles };
+}
+
+async function fetchTMDbData(title) {
+  const API_KEY = 'eedc718be2818766f1c16eafc83fee0a';
+
+  const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(title)}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error("TMDb fetch error:", err);
+    return null;
+  }
 }
 
 // ============================================================
