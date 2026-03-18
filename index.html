@@ -1397,8 +1397,11 @@ function applyUpdates(updates) {
     const existing = findByTitle(op.title);
     if (op.action === 'update') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
-const rawFields = op.fields || op;
-const normalized = normalizeFields(rawFields);
+const rawFields = op.fields || (() => {
+  const { action, title, ...rest } = op;
+  return rest;
+})();
+      const normalized = normalizeFields(rawFields);
 
 if (normalized.status) {
   const s = normalized.status.toLowerCase().trim();
