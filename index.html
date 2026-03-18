@@ -743,6 +743,10 @@ let currentTab = 'assistant';
 const CHUNK_SIZE = 200; // items per storage key
 
 async function loadStorage() {
+    alert("window.storage = " + typeof window.storage);
+    alert("localStorage = " + typeof localStorage);
+
+  try {
   try {
     // Try chunked storage first
     let metaResult = null;
