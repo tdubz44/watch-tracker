@@ -1753,6 +1753,41 @@ const updates = Array.isArray(parsed) ? parsed : [parsed];
 
 async function sendMessage(userText) {
   if (!userText.trim()) return;
+
+if (pendingSelection) {
+  addMsg('user', userText);
+  
+  const choice = parseInt(userText.trim(), 10);
+
+  if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
+    const selected = pendingSelection.results[choice - 1];
+
+    const newItem = {
+      title: selected.title || selected.name,
+      ...pendingSelection.normalized,
+      status: pendingSelection.normalized.status || 'Watchlist'
+    };
+
+    if (selected.release_date || selected.first_air_date) {
+      newItem.year = (selected.release_date || selected.first_air_date).split("-")[0];
+    }
+
+    newItem.format = selected.first_air_date ? "Series" : "Movie";
+    newItem.lifecycle = selected.first_air_date ? "Ongoing" : "Finished";
+
+    library.push(newItem);
+    saveLibrary();
+
+    addMsg('assistant', `Added "${newItem.title}" successfully ✅`);
+
+    pendingSelection = null;
+    return;
+  } else {
+    addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
+    return;
+  }
+}
+  
   const sendBtn = document.getElementById('sendBtn');
   const chatInput = document.getElementById('chatInput');
 
