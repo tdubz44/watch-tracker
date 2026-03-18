@@ -743,6 +743,14 @@ let currentTab = 'assistant';
 const CHUNK_SIZE = 200; // items per storage key
 
 async function loadStorage() {
+
+  const full = localStorage.getItem(STORAGE_KEY + "_full");
+if (full) {
+  library = JSON.parse(full);
+  console.log("Loaded from localStorage");
+  return;
+}
+  
     alert("window.storage = " + typeof window.storage);
     alert("localStorage = " + typeof localStorage);
 
@@ -793,6 +801,9 @@ normalizeLibrary();
 
 async function saveLibrary() {
   try {
+
+    localStorage.setItem(STORAGE_KEY + "_full", JSON.stringify(library));
+    
     const chunks = [];
     for (let i = 0; i < library.length; i += CHUNK_SIZE) {
       chunks.push(library.slice(i, i + CHUNK_SIZE));
