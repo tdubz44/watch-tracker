@@ -1467,10 +1467,17 @@ VALID FIELD VALUES:
 
 When giving data updates respond with:
 
-1. JSON block FIRST: <<<JSON [...] JSON>>> with an ARRAY of objects using:
-   - "action": "update" | "add" | "note"
-   - "title": "..."
-   - "status": "watching" | "watched" | "watchlist" | "abandoned"
+1. JSON block FIRST:
+
+<<<JSON
+[
+  {
+    "action": "update" | "add" | "note",
+    "title": "...",
+    "status": "watching" | "watched" | "watchlist" | "abandoned"
+  }
+]
+JSON>>>
 
    Optional fields (include when known):
    - format
