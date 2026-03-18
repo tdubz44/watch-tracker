@@ -1593,13 +1593,7 @@ messages: [
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
 
-const aiText =
-  data.content?.[0]?.text ||
-  data.content
-    ?.filter(b => b.type === 'text')
-    .map(b => b.text)
-    .join('') ||
-  JSON.stringify(data, null, 2);
+const aiText = data.choices?.[0]?.message?.content || '';
 
 console.log('AI TEXT:', aiText);
     
