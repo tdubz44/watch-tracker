@@ -1414,6 +1414,13 @@ const fields = normalizeFields(rawFields);
         }
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
+        
+        const rawFields = op.fields || op;
+console.log('RAW FIELDS:', rawFields);
+
+const normalized = normalizeFields(rawFields);
+console.log('NORMALIZED:', normalized);
+        
         library.push({ title: op.title, status: 'Watchlist', format: '', genre: '', subgenres: '', tone: '', platform: '', rating: '', lifecycle: '', progress: '', year: '', notes: '', date_watched: '', ...normalizeFields(op.fields || op) });
         added++;
       }
