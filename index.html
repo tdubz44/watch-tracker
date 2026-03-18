@@ -1669,7 +1669,7 @@ messages: [
 const aiText = data.choices?.[0]?.message?.content || '';
 
 console.log('AI TEXT:', aiText);
-
+console.log('PARSER HIT');
 const jsonMatch = aiText.match(/<<<JSON([\s\S]*?)JSON>>>/);
 
 if (jsonMatch) {
