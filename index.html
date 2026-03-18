@@ -1475,21 +1475,26 @@ const newItem = {
   status: normalized.status || 'Watchlist'
 };
 
-library.push(newItem);
-added++;
-
 const tmdbData = await fetchTMDbData(op.title);
 console.log("TMDB RESULT:", tmdbData);
 
 // Multiple results → stop
 if (tmdbData?.results?.length > 1) {
-  const options = tmdbData.results.slice(0, 5).map((r, i) => {
+  const results = tmdbData.results.slice(0, 5);
+
+  pendingSelection = {
+    results,
+    normalized: newItem
+  };
+
+  const options = results.map((r, i) => {
     const year = (r.release_date || r.first_air_date || "").split("-")[0];
     return `${i + 1}. ${r.title || r.name} (${year})`;
   }).join("\n");
 
-  alert(`Multiple matches found:\n\n${options}`);
-  return { added: 0, updated: 0, skipped: 1, skippedTitles: [op.title + " (ambiguous)"] };
+  addMsg('assistant', `Multiple matches found:\n\n${options}\n\nReply with a number (1-${results.length})`);
+
+  return;
 }
 
 // Single result → enrich
