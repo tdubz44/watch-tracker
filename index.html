@@ -855,7 +855,7 @@ function renderSearch(query) {
 
   container.innerHTML = `<div class="search-card-list">${results.map(item => {
     const metaChips = [
-      item.genre ? `<span class="meta-chip mc-genre">${esc(item.genre)}</span>` : '',
+      item.primary_genre ? `<span class="meta-chip mc-genre">${esc(item.primary_genre)}</span>` : '',
       item.tone ? `<span class="meta-chip mc-tone">${esc(item.tone)}</span>` : '',
       item.platform ? `<span class="meta-chip mc-platform">📺 ${esc(item.platform)}</span>` : '',
       item.lifecycle ? `<span class="meta-chip mc-lifecycle">${esc(item.lifecycle)}</span>` : '',
@@ -866,7 +866,10 @@ function renderSearch(query) {
     ].filter(Boolean).join('');
 
     const subgenreChips = item.subgenres
-      ? item.subgenres.split(',').map(s => s.trim()).filter(Boolean)
+      ? Array.isArray(item.subgenres)
+      ? item.subgenres
+      : item.subgenres.split(',')
+      .map(s => s.trim()).filter(Boolean)
           .map(s => `<span class="subgenre-chip">${esc(s)}</span>`).join('')
       : '';
 
