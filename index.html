@@ -1529,10 +1529,15 @@ function removeTyping() {
 }
 
 function parseAndApplyJSON(text) {
-  const match = text.match(/<<<JSON([\s\S]*?)JSON>>>/);
+const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
   if (!match) return null;
   try {
-    const updates = JSON.parse(match[1].trim());
+const cleaned = match[1]
+  .replace(/\\n/g, '')
+  .replace(/\\"/g, '"')
+  .trim();
+
+const updates = JSON.parse(cleaned);
     const result = applyUpdates(updates);
     saveLibrary();
     updateStats();
