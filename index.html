@@ -1618,9 +1618,8 @@ function addMsg(role, text, jsonApplied) {
     <div class="msg-avatar">${avatar}</div>
     <div class="msg-bubble">
       ${displayText.replace(/\n/g, '<br>')}
-      ${jsonApplied ? `<div class="json-msg">✔ ${jsonApplied}</div>` : ''}
+      ${jsonApplied ? `<div class="json-msg">✔ JSON applied}</div>` : ''}
     </div>
-  `;
 
   chatWindow.appendChild(div);
   chatWindow.scrollTop = chatWindow.scrollHeight;
