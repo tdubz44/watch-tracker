@@ -1419,7 +1419,7 @@ Object.assign(existing, normalized);
       console.log('AFTER UPDATE:', existing);
       
       updated++;
-    } else if ((op.action || '').toLowerCase().trim() === 'delete')
+    } else if ((op.action || '').toLowerCase().trim() === 'delete') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
       library.splice(library.indexOf(existing), 1);
       updated++;
