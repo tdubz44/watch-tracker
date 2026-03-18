@@ -1458,7 +1458,12 @@ RULES:
 - Flag Cancelled/Ongoing on recs; flag Apple TV as time-sensitive
 - Paywalled Apple TV titles (Awake, The Kettering Incident) require additional fee
 - Unclear Canadian availability: say so explicitly
-
+- When suggesting adding or updating items:
+  1. FIRST show details in plain text (no JSON)
+  2. Ask for confirmation
+  3. ONLY include <<<JSON>>> after the user clearly confirms
+  4. Never include JSON in the first suggestion message
+  
 VALID FIELD VALUES:
 - Status: Watched, Watching, Watchlist, Abandoned
 - Format: Movie, Series, Miniseries
@@ -1605,7 +1610,13 @@ const cleaned = aiText
   .replace(/\\"/g, '"')
   .trim();
 
-const jsonAppliedMsg = parseAndApplyJSON(cleaned);
+let jsonAppliedMsg = null;
+
+const userSaidYes = /^(yes|yeah|yep|sure|ok|do it|please)/i.test(userText.trim());
+
+if (userSaidYes) {
+  jsonAppliedMsg = parseAndApplyJSON(cleaned);
+}
     convoHistory.push({ role: 'assistant', content: aiText });
     await saveConvo();
 
