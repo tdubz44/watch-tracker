@@ -865,13 +865,13 @@ function renderSearch(query) {
       item.date_watched ? `<span class="meta-chip mc-date">📅 ${esc(item.date_watched)}</span>` : '',
     ].filter(Boolean).join('');
 
-    const subgenreChips = item.subgenres
-      ? Array.isArray(item.subgenres)
+const subgenreChips = item.subgenres
+  ? (Array.isArray(item.subgenres)
       ? item.subgenres
-      : item.subgenres.split(',')
+      : item.subgenres.split(','))
       .map(s => s.trim()).filter(Boolean)
-          .map(s => `<span class="subgenre-chip">${esc(s)}</span>`).join('')
-      : '';
+      .map(s => `<span class="subgenre-chip">${esc(s)}</span>`).join('')
+  : '';
 
     const progressLine = item.progress
       ? `<div class="sc-progress">📍 ${esc(item.progress)}</div>` : '';
