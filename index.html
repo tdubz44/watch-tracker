@@ -1664,7 +1664,19 @@ messages: [
     });
 
     const data = await response.json();
-    if (data.error) throw new Error(data.error.message);
+
+if (data.error) {
+  const msg = data.error.message || '';
+
+  if (msg.toLowerCase().includes('rate limit')) {
+    console.log('Rate limited — retrying in 20s...');
+    await new Promise(r => setTimeout(r, 20000));
+
+    return await callAssistant(messages, apiKey);
+  }
+
+  throw new Error(msg);
+}
 
 const aiText = data.choices?.[0]?.message?.content || '';
 
