@@ -1523,6 +1523,19 @@ RULES:
   title, format, status, platform, primary_genre, tone, lifecycle, subgenres, year
 - NEVER use "genre" — always use "primary_genre"
 
+- When reporting missing metadata:
+  - Group titles by missing field combinations instead of listing each item individually
+  - Use concise summaries (e.g. "Missing platform + tone:")
+  - List titles under each group without repeating full metadata
+  - Prioritize brevity and scannability over completeness
+  - If many titles share the same issue, summarize (e.g. "...and X more")
+  - Only show full details for unusual or edge cases
+
+Sort groups by importance:
+1. Critical missing fields (platform, format)
+2. Usability missing fields (tone, rating)
+3. Minor gaps (lifecycle for movies, optional fields, etc.)
+
 VALID FIELD VALUES:
 - Status: Watched, Watching, Watchlist, Abandoned
 - Format: Movie, Series, Miniseries
