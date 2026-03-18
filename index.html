@@ -1393,7 +1393,8 @@ function applyUpdates(updates) {
     const existing = findByTitle(op.title);
     if (op.action === 'update') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
-      Object.assign(existing, normalizeFields(op.fields || {}));
+const rawFields = op.fields || op;
+Object.assign(existing, normalizeFields(rawFields));
       updated++;
     } else if (op.action === 'delete') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
