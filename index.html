@@ -1365,6 +1365,23 @@ function normalizeFields(fields) {
     const norm = keyMap[k.toLowerCase()] || k;
     out[norm] = v;
   }
+
+  if (out.platform) {
+  const p = out.platform.toLowerCase();
+
+  if (p.includes('apple')) out.platform = 'Apple TV';
+  else if (p.includes('netflix')) out.platform = 'Netflix';
+  else if (p.includes('prime')) out.platform = 'Prime Video';
+}
+
+if (out.status) {
+  const s = out.status.toLowerCase();
+
+  if (s === 'watching') out.status = 'Watching';
+  else if (s === 'watchlist') out.status = 'Watchlist';
+  else if (s === 'watched') out.status = 'Watched';
+  else if (s === 'abandoned') out.status = 'Abandoned';
+}
   return out;
 }
 
@@ -1463,7 +1480,7 @@ RULES:
 - Don't overwrite populated metadata fields
 - Confirm every change
 - Flag Cancelled/Ongoing on recs; flag Apple TV as time-sensitive
-- Paywalled Apple TV titles (Awake, The Kettering Incident) require additional fee
+- Paywalled titles (Awake, The Kettering Incident) require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
 - When suggesting adding or updating items:
   1. FIRST show details in plain text (no JSON)
