@@ -1490,6 +1490,8 @@ JSON>>>
 
 If no data changes are needed, do NOT output a JSON block.
 
+`;
+  
 function addMsg(role, text, jsonApplied) {
   const chatWindow = document.getElementById('chatWindow');
   const div = document.createElement('div');
@@ -1507,7 +1509,6 @@ function addMsg(role, text, jsonApplied) {
   chatWindow.appendChild(div);
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
-`;
 
 function addTyping() {
   const chatWindow = document.getElementById('chatWindow');
