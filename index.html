@@ -1551,12 +1551,8 @@ let parsed = JSON.parse(cleaned);
 if (typeof parsed === 'string') {
   parsed = JSON.parse(parsed);
 }
-    
-if (Array.isArray(parsed)) {
-  parsed = parsed[0];
-}
 
-const updates = parsed;
+const updates = Array.isArray(parsed) ? parsed : [parsed];
     const result = applyUpdates(updates);
     saveLibrary();
     updateStats();
