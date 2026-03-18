@@ -1366,6 +1366,10 @@ function normalizeFields(fields) {
     out[norm] = v;
   }
 
+  if (out.primary_genre && !out.genre) {
+  out.genre = out.primary_genre;
+}
+
   if (out.platform) {
   const p = out.platform.toLowerCase();
 
