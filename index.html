@@ -1669,6 +1669,24 @@ messages: [
 const aiText = data.choices?.[0]?.message?.content || '';
 
 console.log('AI TEXT:', aiText);
+
+const jsonMatch = aiText.match(/<<<JSON([\s\S]*?)JSON>>>/);
+
+if (jsonMatch) {
+  try {
+    const updates = JSON.parse(jsonMatch[1]);
+
+    console.log('AUTO APPLY:', updates);
+
+    applyUpdates(updates);
+    saveLibrary();
+    updateStats();
+    refreshSearch();
+    renderWatching();
+  } catch (e) {
+    console.error('JSON parse failed:', e);
+  }
+}
     
 const cleaned = aiText
   .replace(/\\n/g, '')
