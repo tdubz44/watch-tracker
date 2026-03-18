@@ -1423,7 +1423,7 @@ Object.assign(existing, normalized);
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
       library.splice(library.indexOf(existing), 1);
       updated++;
-    } else if ((op.action || '').toLowerCase().trim() === 'add')
+    } else if ((op.action || '').toLowerCase().trim() === 'add') {
       if (existing) {
 const rawFields = op.fields || op;
 const fields = normalizeFields(rawFields);
