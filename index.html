@@ -1535,7 +1535,8 @@ const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
 const cleaned = match[1]
   .replace(/\\n/g, '')
   .replace(/\\"/g, '"')
-  .trim();
+  .trim()
+  .replace(/^[^\[]*/, '');
 
 const updates = JSON.parse(cleaned);
     const result = applyUpdates(updates);
