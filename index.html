@@ -642,7 +642,7 @@
     <div class="assistant-layout">
       <div class="quick-actions" id="quickActions">
         <button class="qa-btn" data-prompt="Recommend something new for me based on my taste profile. Check my library and don't suggest anything I've already watched or abandoned.">✨ Recommend something</button>
-        <button class="qa-btn" data-prompt="Show me my full Apple TV watchlist titles. Flag any that are time-sensitive or require additional fee.">🍎 Apple TV watchlist</button>
+        <button class="qa-btn" data-prompt="Show me my full Apple TV watchlist titles. Flag any that require additional fee.">🍎 Apple TV watchlist</button>
         <button class="qa-btn" data-prompt="Give me detailed stats about my library: breakdown by status, format, platform, genre, and anything interesting you notice about my taste patterns.">📊 Library stats</button>
         <button class="qa-btn" data-prompt="Find hidden gems in my watchlist — titles that might be underseen or underrated based on what I tend to love. Prioritize my taste lanes.">💎 Hidden gems</button>
         <button class="qa-btn" data-prompt="Review my 'Watching' and 'Watchlist' titles. For each, determine if there are new episodes or seasons released relative to my progress. Highlight what I should watch next, what's fully caught up, and what's upcoming. Prioritize relevance to my current position, not just general release info. Include Canadian availability when relevant.">📡 Check my shows</button>
@@ -1510,8 +1510,8 @@ RULES:
 - Check duplicates before adding (use the ALL TITLES pipe-separated list)
 - Don't overwrite populated metadata fields
 - Confirm every change
-- Flag Cancelled/Ongoing on recs; flag Apple TV as time-sensitive
-- Paywalled titles (Awake, The Kettering Incident) require additional fee to rent or buy
+- Flag Cancelled/Ongoing on recs
+- Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
 - When suggesting adding or updating items:
   1. FIRST show details in plain text (no JSON)
