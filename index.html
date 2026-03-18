@@ -747,7 +747,6 @@ async function loadStorage() {
     alert("localStorage = " + typeof localStorage);
 
   try {
-  try {
     // Try chunked storage first
     let metaResult = null;
     try { metaResult = await window.storage.get(STORAGE_KEY + '_meta'); } catch(e) {}
