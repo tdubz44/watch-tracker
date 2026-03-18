@@ -757,13 +757,19 @@ async function loadStorage() {
           if (chunk && chunk.value) merged = merged.concat(JSON.parse(chunk.value));
         } catch(e) {}
       }
-      library = merged;
+library = merged;
+
+normalizeLibrary();
+await saveLibrary();
+      
     } else {
       // Fall back to legacy single-key storage
       try {
         const libResult = await window.storage.get(STORAGE_KEY);
         if (libResult && libResult.value) {
-          library = JSON.parse(libResult.value);
+library = JSON.parse(libResult.value);
+
+normalizeLibrary();
           // Migrate to chunked storage immediately
           await saveLibrary();
         }
@@ -1463,7 +1469,11 @@ RULES:
   2. Ask for confirmation
   3. ONLY include <<<JSON>>> after the user clearly confirms
   4. Never include JSON in the first suggestion message
-  
+
+- Use EXACT field names when generating JSON:
+  title, format, status, platform, primary_genre, tone, lifecycle, subgenres, year
+- NEVER use "genre" — always use "primary_genre"
+
 VALID FIELD VALUES:
 - Status: Watched, Watching, Watchlist, Abandoned
 - Format: Movie, Series, Miniseries
@@ -1553,6 +1563,12 @@ if (typeof parsed === 'string') {
 }
 
 const updates = Array.isArray(parsed) ? parsed : [parsed];
+    updates.forEach(item => {
+  if (item.genre && !item.primary_genre) {
+    item.primary_genre = item.genre;
+    delete item.genre;
+  }
+});
     const result = applyUpdates(updates);
     saveLibrary();
     updateStats();
