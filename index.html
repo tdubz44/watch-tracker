@@ -1409,6 +1409,7 @@ if (normalized.status) {
 }
 
 Object.assign(existing, normalized);
+      console.log('AFTER UODATE:', existing);
       
       updated++;
     } else if (op.action === 'delete') {
