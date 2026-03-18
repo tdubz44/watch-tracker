@@ -1466,8 +1466,16 @@ VALID FIELD VALUES:
 - Tone: separate field — e.g. Slow-Burn, Dark, Philosophical, Character-Driven, Cerebral, Atmospheric, Mind-Bending, Gritty
 
 When giving data updates respond with:
-1. JSON block FIRST: <<<JSON [...] JSON>>> with array of {"action":"update"|"add","title":"...","fields":{...}}
+
+1. JSON block FIRST: <<<JSON [...] JSON>>> with array of objects using:
+   - "action": "update" | "add" | "note"
+   - "title": "..."
+   - "status": "watching" | "watched" | "watchlist" | "abandoned"
+   - optional: any additional fields at the TOP LEVEL (NOT inside "fields")
+
 2. Then your conversational response below the JSON block
+
+Do NOT use a "fields" object. All properties must be top-level.
 
 If no data changes needed, skip the JSON block entirely.`;
 
