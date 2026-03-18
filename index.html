@@ -1393,10 +1393,11 @@ function applyUpdates(updates) {
   let added=0, updated=0, skipped=0;
   const skippedTitles = [];
   for (const op of updates) {
+    console.log('ACTION VALUE:', op.action);
     if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
     const existing = findByTitle(op.title);
-    if (op.action === 'update') {
-      if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
+if ((op.action || '').toLowerCase().trim() === 'update') {
+  if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
 const rawFields = op.fields || (() => {
   const { action, title, ...rest } = op;
   return rest;
@@ -1412,14 +1413,14 @@ if (normalized.status) {
 }
 
 Object.assign(existing, normalized);
-      console.log('AFTER UODATE:', existing);
+      console.log('AFTER UPDATE:', existing);
       
       updated++;
-    } else if (op.action === 'delete') {
+    } else if ((op.action || '').toLowerCase().trim() === 'delete')
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
       library.splice(library.indexOf(existing), 1);
       updated++;
-    } else if (op.action === 'add') {
+    } else if ((op.action || '').toLowerCase().trim() === 'add')
       if (existing) {
 const rawFields = op.fields || op;
 const fields = normalizeFields(rawFields);
