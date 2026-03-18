@@ -803,6 +803,7 @@ async function saveLibrary() {
   try {
 
     localStorage.setItem(STORAGE_KEY + "_full", JSON.stringify(library));
+    console.log("SAVING to localStorage", library);
     
     const chunks = [];
     for (let i = 0; i < library.length; i += CHUNK_SIZE) {
