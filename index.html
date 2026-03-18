@@ -1398,7 +1398,18 @@ function applyUpdates(updates) {
     if (op.action === 'update') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
 const rawFields = op.fields || op;
-Object.assign(existing, normalizeFields(rawFields));
+const normalized = normalizeFields(rawFields);
+
+if (normalized.status) {
+  const s = normalized.status.toLowerCase().trim();
+  if (s === 'watching') normalized.status = 'Watching';
+  else if (s === 'watchlist') normalized.status = 'Watchlist';
+  else if (s === 'watched') normalized.status = 'Watched';
+  else if (s === 'abandoned') normalized.status = 'Abandoned';
+}
+
+Object.assign(existing, normalized);
+      
       updated++;
     } else if (op.action === 'delete') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
