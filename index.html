@@ -729,6 +729,23 @@ const VALID_FORMATS = ['Movie','Series','Miniseries'];
 const VALID_PLATFORMS = ['Netflix','Prime','Crave','Disney','Apple TV'];
 const VALID_GENRES = ['Comedy','Drama','Action','Sci-Fi','Documentary','Adventure','Crime','Animation','Horror','Romance','Fantasy','Mystery','Thriller'];
 const VALID_LIFECYCLE = ['Finished','Ongoing','Cancelled'];
+const SCHEMA = {
+  title: '',
+  year: '',
+  imdb_id: '',
+  format: '',
+  lifecycle: '',
+  status: '',
+  progress: '',
+  seasons_total: '',
+  episodes_total: '',
+  primary_genre: '',
+  subgenres: '',
+  tone: '',
+  platform: '',
+  notes: '',
+  date_watched: ''
+};
 
 // ============================================================
 // STATE
@@ -1073,7 +1090,6 @@ function normalizeRow(row) {
     'subgenres': 'subgenres', 'subgenre': 'subgenres', 'subgenre tags': 'subgenres', 'tags': 'subgenres',
     'tone': 'tone',
     'platform': 'platform', 'streaming': 'platform',
-    'rating': 'rating', 'imdb': 'rating', 'imdb rating': 'rating', 'your rating': 'rating',
     'lifecycle': 'lifecycle',
     'progress': 'progress', 'episode': 'progress',
     'notes': 'notes', 'note': 'notes',
@@ -1177,7 +1193,7 @@ function importRows(rows, statusEl) {
 }
 
 document.getElementById('exportBtn').addEventListener('click', () => {
-  const headers = ['title','status','format','genre','subgenres','tone','platform','rating','lifecycle','progress','year','date_watched','notes','imdb_id','runtime'];
+  const headers = Object.keys(SCHEMA);
   const rows = [headers.join(',')];
   for (const item of library) {
     rows.push(headers.map(h => {
@@ -1528,6 +1544,10 @@ MODES:
 - One line per field
 - Format EXACTLY: Field: Value
 - Do NOT include any extra text before or after the fields
+- You MUST include ALL fields, even if the value is unknown
+- If a value is unknown, leave the VALUE empty after the colon
+- Example: Subgenres
+- Do NOT omit any fields
 - After listing fields, ask for confirmation on a new line:
 Confirm add?
 
