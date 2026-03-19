@@ -1840,10 +1840,66 @@ if (userText.toLowerCase().startsWith('add')) {
       normalized: { status: 'Watchlist' }
     };
 
-    const options = results.map((r, i) => {
-      const year = (r.release_date || r.first_air_date || "").split("-")[0];
-      return `${i + 1}. ${r.title || r.name} (${year})`;
-    }).join("\n");
+const optionsArray = await Promise.all(results.map(async (r, i) => {
+
+  const isTV = r.first_air_date !== undefined;
+  const endpoint = isTV ? 'tv' : 'movie';
+
+  try {
+    const res = await fetch(
+      `https://api.themoviedb.org/3/${endpoint}/${r.id}?api_key=${API_KEY}`
+    );
+    const details = await res.json();
+
+    // --- TYPE ---
+    let type = "Movie";
+    if (endpoint === "tv") {
+      const isMiniseries =
+        details.number_of_seasons === 1 &&
+        details.status === "Ended";
+      type = isMiniseries ? "Miniseries" : "Series";
+    }
+
+    // --- YEAR ---
+    const year = (details.first_air_date || details.release_date || '').split('-')[0];
+
+    // --- GENRES ---
+    const genres = details.genres?.map(g => g.name).join(', ') || '';
+
+    // --- PLATFORM ---
+    let platform = '';
+    if (endpoint === 'tv') {
+      platform = details.networks?.[0]?.name || '';
+    } else {
+      platform = details.production_companies?.[0]?.name || '';
+    }
+
+    // --- LIFECYCLE ---
+    let lifecycle = '';
+    if (endpoint === 'tv') {
+      lifecycle =
+        details.status === "Returning Series"
+          ? "Ongoing"
+          : details.status === "Ended"
+          ? "Finished"
+          : details.status === "Canceled"
+          ? "Cancelled"
+          : '';
+    }
+
+    const title = details.name || details.title;
+
+    return `${i + 1}. ${title} | ${type} | ${genres} | ${platform} | ${lifecycle} | ${year}`;
+
+  } catch (e) {
+    console.error("Option fetch failed:", e);
+    const fallbackYear = (r.release_date || r.first_air_date || '').split('-')[0];
+    return `${i + 1}. ${r.title || r.name} (${fallbackYear})`;
+  }
+
+}));
+
+const options = optionsArray.join('\n');
 
     addMsg('assistant', `Multiple matches found:\n\n${options}\n\nReply with a number (1-${results.length})`);
     return;
