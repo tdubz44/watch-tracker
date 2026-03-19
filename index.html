@@ -1944,7 +1944,7 @@ if (data.error) {
     console.log('Rate limited — retrying in 20s...');
     await new Promise(r => setTimeout(r, 20000));
 
-    return await (messages, apiKey);
+    return await (messages, API_KEY);
   }
 
   throw new Error(msg);
@@ -2130,12 +2130,12 @@ function maybeDailyBackup(library){
 }
 
 // ---- OpenAI Assistant Helper ----
-async function callAssistant(messages, apiKey){
+async function callAssistant(messages, API_KEY){
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method:"POST",
     headers:{
       "Content-Type":"application/json",
-      "Authorization":"Bearer " + apiKey
+      "Authorization":"Bearer " + API_KEY
     },
     body: JSON.stringify({
       model:"gpt-4.1-mini",
