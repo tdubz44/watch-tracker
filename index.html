@@ -1742,32 +1742,86 @@ if (pendingSelection) {
   
   const choice = parseInt(userText.trim(), 10);
 
-  if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
-    const selected = pendingSelection.results[choice - 1];
+if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
 
-    const newItem = {
-      title: selected.title || selected.name,
-      ...pendingSelection.normalized,
-      status: pendingSelection.normalized.status || 'Watchlist'
-    };
+  const selected = pendingSelection.results[choice - 1];
 
-    if (selected.release_date || selected.first_air_date) {
-      newItem.year = (selected.release_date || selected.first_air_date).split("-")[0];
-    }
+  // Determine endpoint
+  const isTV = !!selected.first_air_date;
+  const endpoint = isTV ? "tv" : "movie";
 
-    newItem.format = selected.first_air_date ? "Series" : "Movie";
-    newItem.lifecycle = selected.first_air_date ? "Ongoing" : "Finished";
+  // Fetch full TMDb details
+  const detailsRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
+  );
+  const details = await detailsRes.json();
 
-    library.push(newItem);
-    saveLibrary();
+  // --- TYPE ---
+  let type = "Movie";
 
-    addMsg('assistant', `Added "${newItem.title}" (${newItem.year}) successfully ✅`);
+  if (endpoint === "tv") {
+    const isMiniseries =
+      details.number_of_seasons === 1 &&
+      details.status === "Ended";
 
-    pendingSelection = null;
-    
-  } else {
-    addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
+    type = isMiniseries ? "Miniseries" : "Series";
   }
+
+  // --- YEAR ---
+  const year = (details.first_air_date || details.release_date || "").split("-")[0];
+
+  // --- GENRES ---
+  const genres = details.genres?.map(g => g.name).join(", ") || "";
+
+  // --- PLATFORM ---
+  let platform = "";
+  if (endpoint === "tv") {
+    platform = details.networks?.[0]?.name || "";
+  } else {
+    platform = details.production_companies?.[0]?.name || "";
+  }
+
+  // --- LIFECYCLE ---
+  let lifecycle = "";
+  if (endpoint === "tv") {
+    lifecycle =
+      details.status === "Returning Series"
+        ? "Ongoing"
+        : details.status === "Ended"
+        ? "Finished"
+        : details.status === "Canceled"
+        ? "Cancelled"
+        : "";
+  }
+
+  // --- TITLE ---
+  const title = details.name || details.title;
+
+  // --- DISPLAY ---
+  const display = `${title} | ${type} | ${genres} | ${platform} | ${lifecycle} | ${year}`;
+
+  // --- SAVE ---
+  const newItem = {
+    title,
+    format: type,
+    genre: genres,
+    platform,
+    lifecycle,
+    year,
+    status: pendingSelection.normalized.status || "Watchlist"
+  };
+
+  library.push(newItem);
+  saveLibrary();
+
+  addMsg('assistant', `Added:\n${display} ✅`);
+
+  pendingSelection = null;
+  return;
+
+} else {
+  addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
+}
     return;
   }
 
