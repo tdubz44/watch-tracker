@@ -1887,13 +1887,23 @@ if (userSaidYes) {
 }
 
 document.getElementById('sendBtn').addEventListener('click', () => {
-  sendMessage(document.getElementById('chatInput').value);
+const input = document.getElementById('chatInput');
+const text = input.value;
+input.value = ''; // ✅ clears the box immediately
+sendMessage(text);
 });
 document.getElementById('chatInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.shiftKey) {
-    e.preventDefault();
-    sendMessage(e.target.value);
-  }
+if (e.key === 'Enter' && e.shiftKey) {
+  e.preventDefault();
+
+  const input = e.target;
+  const text = input.value.trim();
+
+  if (!text) return; // prevents empty send
+  
+  input.value = ''; // ✅ clear here too
+  sendMessage(text);
+}
 });
 document.getElementById('chatInput').addEventListener('input', function() {
   this.style.height = 'auto';
