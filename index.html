@@ -1736,9 +1736,9 @@ const updates = Array.isArray(parsed) ? parsed : [parsed];
 
 async function sendMessage(userText) {
   if (!userText.trim()) return;
+  addMsg('user', userText);
   
 if (pendingSelection) {
-  addMsg('user', userText);
   
   const choice = parseInt(userText.trim(), 10);
 
