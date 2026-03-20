@@ -1799,8 +1799,13 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const title = details.name || details.title;
 
   // --- DISPLAY ---
-const parts = [title, type, genres, platform, lifecycle, year].filter(Boolean);
-const display = parts.join(' | ');
+let display = `Title: ${title}`;
+
+if (type) display += `\nFormat: ${type}`;
+if (genres) display += `\nGenre: ${genres}`;
+if (platform) display += `\nPlatform: ${platform}`;
+if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
+if (year) display += `\nYear: ${year}`;
   
   // --- SAVE ---
   const newItem = {
