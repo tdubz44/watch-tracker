@@ -1904,14 +1904,22 @@ try {
 
   const region = providerData.results?.CA;
 
-  if (region?.flatrate?.length) {
-    platform = region.flatrate
-      .map(p =>
-        p.provider_name === "Amazon Prime Video"
+  if (region) {
+    const providers = [
+      ...(region.flatrate || []),
+      ...(region.ads || [])
+    ];
+
+    const unique = [...new Map(
+      providers.map(p => [
+        p.provider_name.includes("Amazon Prime")
           ? "Prime Video"
-          : p.provider_name
-      )
-      .join(", ");
+          : p.provider_name,
+        p
+      ])
+    ).keys()];
+
+    platform = unique.join(", ");
   }
 
 } catch (e) {
@@ -2065,20 +2073,28 @@ try {
 
   const region = providerData.results?.CA;
 
-  if (region?.flatrate?.length) {
-    platform = region.flatrate
-      .map(p =>
-        p.provider_name === "Amazon Prime Video"
+  if (region) {
+    const providers = [
+      ...(region.flatrate || []),
+      ...(region.ads || [])
+    ];
+
+    const unique = [...new Map(
+      providers.map(p => [
+        p.provider_name.includes("Amazon Prime")
           ? "Prime Video"
-          : p.provider_name
-      )
-      .join(", ");
+          : p.provider_name,
+        p
+      ])
+    ).keys()];
+
+    platform = unique.join(", ");
   }
 
 } catch (e) {
   console.error("Provider fetch failed:", e);
 }
-
+    
     // --- LIFECYCLE ---
     let lifecycle = '';
     if (endpoint === 'tv') {
@@ -2277,10 +2293,6 @@ try {
           .replace(/Lifecycle:.*/i, `Lifecycle: ${lifecycle}`)
           .replace(/Year:.*/i, `Year: ${year}`)
           .replace(/IMDb ID:.*/i, `IMDb ID: ${imdbId}`);
-        if (!cleaned.match(/IMDb ID:/i) && imdbId) {
-  cleaned += `\nIMDb ID: ${imdbId}`;
-}
-
       }
     }
   } catch (e) {
