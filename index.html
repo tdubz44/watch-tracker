@@ -1826,6 +1826,19 @@ if (selected.media_type) {
   );
 const details = await detailsRes.json();
 
+let imdbId = '';
+
+try {
+  const externalRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/external_ids?api_key=${API_KEY}`
+  );
+  const external = await externalRes.json();
+
+  imdbId = external.imdb_id || '';
+} catch (e) {
+  console.error('Failed to fetch external IDs:', e);
+}
+  
 if (!details || details.success === false) {
   console.error("Bad TMDb details response:", details);
   addMsg('assistant', '⚠️ Failed to fetch full details');
