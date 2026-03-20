@@ -1847,8 +1847,6 @@ if (!details || details.success === false) {
   
   console.log("DETAILS:", details);
   
-  let imdbId = details.imdb_id || '';
-
 if (!imdbId && endpoint === 'tv') {
   try {
     const extRes = await fetch(
