@@ -1925,6 +1925,12 @@ const optionsArray = await Promise.all(results.map(async (r, i) => {
     );
     const details = await res.json();
 
+  // --- GENRES ---
+const genreArray = details.genres?.map(g => g.name) || [];
+
+const primaryGenre = genreArray[0] || "";
+const subGenres = genreArray.slice(1).join(', ');
+
     // --- TYPE ---
     let type = "Movie";
     if (endpoint === "tv") {
