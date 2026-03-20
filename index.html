@@ -1810,8 +1810,7 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const selected = pendingSelection.results[choice - 1];
 
   // Determine endpoint
-  const isTV = !!selected.first_air_date;
-  const endpoint = isTV ? "tv" : "movie";
+const endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
 
   // Fetch full TMDb details
   const detailsRes = await fetch(
@@ -1983,8 +1982,7 @@ if (userText.toLowerCase().startsWith('add')) {
 
 const optionsArray = await Promise.all(results.map(async (r, i) => {
 
-  const isTV = r.first_air_date !== undefined;
-  const endpoint = isTV ? 'tv' : 'movie';
+const endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
 
   try {
     const res = await fetch(
