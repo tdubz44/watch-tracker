@@ -1790,8 +1790,16 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const year = (details.first_air_date || details.release_date || "").split("-")[0];
 
   // --- GENRES ---
-const genreArray = details.genres?.map(g => g.name) || [];
+const genreArray = (details.genres?.map(g => g.name) || [])
+  .map(g => {
+    if (g === "Science Fiction") return "Sci-Fi";
+    return g;
+  });
 
+  if (genreArray.includes("Sci-Fi")) {
+  genreArray.sort(g => (g === "Sci-Fi" ? -1 : 1));
+}
+  
 const primaryGenre = genreArray[0] || "";
 const subGenres = genreArray.slice(1).join(', ');
   
