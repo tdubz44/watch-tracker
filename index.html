@@ -1088,7 +1088,7 @@ function normalizeRow(row) {
     'status': 'status',
     'format': 'format', 'type': 'format', 'title type': 'format',
     'genre': 'primary_genre', 'primary genre': 'primary_genre', 'genres': 'primary_genre',
-    'subgenres': 'subgenres', 'subgenre': 'subgenres', 'subgenre tags': 'subgenres', 'tags': 'subgenres',
+    'subgenres': 'subgenres', 'subgenre': 'subgenres', 'subgenre tags': 'subgenres', 'tags': 'subgenres', 'sub genres': 'subgenres', 'sub-genre': 'subgenres', 'sub-genres': 'subgenres',
     'tone': 'tone',
     'platform': 'platform', 'streaming': 'platform',
     'lifecycle': 'lifecycle',
@@ -1388,10 +1388,21 @@ function normalizeFields(fields) {
     'date watched': 'date_watched', 'completed': 'date_watched',
   };
   const out = {};
-  for (const [k, v] of Object.entries(fields)) {
-    const norm = keyMap[k.toLowerCase()] || k;
-    out[norm] = v;
+for (const [k, v] of Object.entries(fields)) {
+  const lowerKey = k.toLowerCase();
+  const value = v;
+
+  // 🔥 SPECIAL HANDLING FOR GENRES
+  if (lowerKey === 'genres' && value) {
+    const arr = value.split(',').map(x => x.trim()).filter(Boolean);
+    out.primary_genre = arr[0] || '';
+    out.subgenres = arr.slice(1).join(', ');
+    continue; // ⛔ skip normal mapping
   }
+
+  const norm = keyMap[lowerKey] || k;
+  out[norm] = value;
+}
 
   if (out.primary_genre && !out.genre) {
   out.genre = out.primary_genre;
@@ -1768,8 +1779,11 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const year = (details.first_air_date || details.release_date || "").split("-")[0];
 
   // --- GENRES ---
-  const genres = details.genres?.map(g => g.name).join(", ") || "";
+const genreArray = details.genres?.map(g => g.name) || [];
 
+const primaryGenre = genreArray[0] || "";
+const subGenres = genreArray.slice(1).join(', ');
+  
   // --- PLATFORM ---
   let platform = "";
   if (endpoint === "tv") {
@@ -1795,9 +1809,10 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const title = details.name || details.title;
 
 // Genre split
-const genreList = genres ? genres.split(', ') : [];
-const primaryGenre = genreList[0] || '';
-const subGenres = genreList.slice(1).join(', ');
+const genreArray = details.genres?.map(g => g.name) || [];
+
+const primaryGenre = genreArray[0] || "";
+const subGenres = genreArray.slice(1).join(', ');
 
 // Seasons / runtime
 const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
@@ -1916,8 +1931,11 @@ const optionsArray = await Promise.all(results.map(async (r, i) => {
     const year = (details.first_air_date || details.release_date || '').split('-')[0];
 
     // --- GENRES ---
-    const genres = details.genres?.map(g => g.name).join(', ') || '';
+const genreArray = details.genres?.map(g => g.name) || [];
 
+const primaryGenre = genreArray[0] || "";
+const subGenres = genreArray.slice(1).join(', ');
+    
     // --- PLATFORM ---
     let platform = '';
     if (endpoint === 'tv') {
@@ -1941,7 +1959,7 @@ const optionsArray = await Promise.all(results.map(async (r, i) => {
 
     const title = details.name || details.title;
 
-const parts = [title, type, genres, platform, lifecycle, year].filter(Boolean);
+const parts = [title, type, genre, subgenres, platform, lifecycle, year].filter(Boolean);
 return `${i + 1}. ${parts.join(' | ')}`;
     
   } catch (e) {
