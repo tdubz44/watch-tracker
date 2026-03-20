@@ -1810,8 +1810,16 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   const selected = pendingSelection.results[choice - 1];
 
   // Determine endpoint
-const endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
+let endpoint = 'movie';
 
+if (selected.media_type) {
+  endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
+} else if (selected.first_air_date) {
+  endpoint = 'tv';
+} else if (selected.release_date) {
+  endpoint = 'movie';
+}
+  
   // Fetch full TMDb details
   const detailsRes = await fetch(
     `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
