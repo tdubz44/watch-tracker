@@ -1814,12 +1814,6 @@ const subGenres = genreArray.slice(1).join(', ');
   // --- TITLE ---
   const title = details.name || details.title;
 
-// Genre split
-const genreArray = details.genres?.map(g => g.name) || [];
-
-const primaryGenre = genreArray[0] || "";
-const subGenres = genreArray.slice(1).join(', ');
-
 // Seasons / runtime
 const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
 const runtime = endpoint === 'movie' ? details.runtime : '';
@@ -1935,12 +1929,6 @@ const optionsArray = await Promise.all(results.map(async (r, i) => {
 
     // --- YEAR ---
     const year = (details.first_air_date || details.release_date || '').split('-')[0];
-
-    // --- GENRES ---
-const genreArray = details.genres?.map(g => g.name) || [];
-
-const primaryGenre = genreArray[0] || "";
-const subGenres = genreArray.slice(1).join(', ');
     
     // --- PLATFORM ---
     let platform = '';
