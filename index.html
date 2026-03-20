@@ -1839,8 +1839,12 @@ const genreArray = (details.genres?.map(g => g.name) || [])
     return g;
   });
 
-  if (genreArray.includes("Sci-Fi")) {
-  genreArray.sort(g => (g === "Sci-Fi" ? -1 : 1));
+if (genreArray.includes("Sci-Fi")) {
+  genreArray.sort((a, b) => {
+    if (a === "Sci-Fi") return -1;
+    if (b === "Sci-Fi") return 1;
+    return 0;
+  });
 }
   
 const primaryGenre = genreArray[0] || "";
