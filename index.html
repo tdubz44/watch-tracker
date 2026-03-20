@@ -1966,7 +1966,7 @@ const subGenres = genreArray.slice(1).join(', ');
 
     const title = details.name || details.title;
 
-const parts = [title, type, primaryGenre, subgenres, platform, lifecycle, year].filter(Boolean);
+const parts = [title, type, primaryGenre, subGenres, platform, lifecycle, year].filter(Boolean);
 return `${i + 1}. ${parts.join(' | ')}`;
     
   } catch (e) {
