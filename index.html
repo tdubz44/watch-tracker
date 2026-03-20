@@ -1894,12 +1894,29 @@ const primaryGenre = genreArray[0] || "";
 const subGenres = genreArray.slice(1).join(', ');
   
   // --- PLATFORM ---
-  let platform = "";
-  if (endpoint === "tv") {
-    platform = details.networks?.[0]?.name || "";
-  } else {
-    platform = details.production_companies?.[0]?.name || "";
+let platform = "";
+
+try {
+  const providerRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${API_KEY}`
+  );
+  const providerData = await providerRes.json();
+
+  const region = providerData.results?.CA;
+
+  if (region?.flatrate?.length) {
+    platform = region.flatrate
+      .map(p =>
+        p.provider_name === "Amazon Prime Video"
+          ? "Prime Video"
+          : p.provider_name
+      )
+      .join(", ");
   }
+
+} catch (e) {
+  console.error("Provider fetch failed:", e);
+}
 
   // --- LIFECYCLE ---
   let lifecycle = "";
@@ -2038,12 +2055,29 @@ const subGenres = genreArray.slice(1).join(', ');
     const year = (details.first_air_date || details.release_date || '').split('-')[0];
     
     // --- PLATFORM ---
-    let platform = '';
-    if (endpoint === 'tv') {
-      platform = details.networks?.[0]?.name || '';
-    } else {
-      platform = details.production_companies?.[0]?.name || '';
-    }
+let platform = "";
+
+try {
+  const providerRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${API_KEY}`
+  );
+  const providerData = await providerRes.json();
+
+  const region = providerData.results?.CA;
+
+  if (region?.flatrate?.length) {
+    platform = region.flatrate
+      .map(p =>
+        p.provider_name === "Amazon Prime Video"
+          ? "Prime Video"
+          : p.provider_name
+      )
+      .join(", ");
+  }
+
+} catch (e) {
+  console.error("Provider fetch failed:", e);
+}
 
     // --- LIFECYCLE ---
     let lifecycle = '';
