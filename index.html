@@ -1919,6 +1919,8 @@ try {
       ])
     ).keys()];
 
+unique.sort((a, b) => a.localeCompare(b));
+    
     platform = unique.join(", ");
   }
 
@@ -2088,6 +2090,8 @@ try {
       ])
     ).keys()];
 
+    unique.sort((a, b) => a.localeCompare(b));
+    
     platform = unique.join(", ");
   }
 
