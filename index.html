@@ -1819,6 +1819,20 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   );
   const details = await detailsRes.json();
 
+  let imdbId = details.imdb_id || '';
+
+if (!imdbId && endpoint === 'tv') {
+  try {
+    const extRes = await fetch(
+      `https://api.themoviedb.org/3/tv/${selected.id}/external_ids?api_key=${API_KEY}`
+    );
+    const ext = await extRes.json();
+    imdbId = ext.imdb_id || '';
+  } catch (e) {
+    console.warn('IMDb fetch failed:', e);
+  }
+}
+
   // --- TYPE ---
   let type = "Movie";
 
@@ -1878,9 +1892,6 @@ const subGenres = genreArray.slice(1).join(', ');
 // Seasons / runtime
 const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
 const runtime = endpoint === 'movie' ? details.runtime : '';
-
-// IMDb ID
-const imdbId = details.imdb_id || '';
 
 // Status
 const status = pendingSelection.normalized.status || "Watchlist";
