@@ -1439,7 +1439,7 @@ if (lowerKey === 'genres' && value) {
 }
 
   if (out.platform) {
-  const p = out.platform.toLowerCase();
+  const list = out.platform.split(',').map(p => p.trim().toLowerCase());
 
   if (p.includes('apple')) out.platform = 'Apple TV';
   else if (p.includes('netflix')) out.platform = 'Netflix';
@@ -1912,7 +1912,7 @@ try {
 
     const unique = [...new Map(
       providers.map(p => [
-        p.provider_name.includes("Amazon Prime")
+        p.provider_name.includes("Prime")
           ? "Prime Video"
           : p.provider_name,
         p
@@ -2081,7 +2081,7 @@ try {
 
     const unique = [...new Map(
       providers.map(p => [
-        p.provider_name.includes("Amazon Prime")
+        p.provider_name.includes("Prime")
           ? "Prime Video"
           : p.provider_name,
         p
