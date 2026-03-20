@@ -1890,8 +1890,9 @@ const optionsArray = await Promise.all(results.map(async (r, i) => {
 
     const title = details.name || details.title;
 
-    return `${i + 1}. ${title} | ${type} | ${genres} | ${platform} | ${lifecycle} | ${year}`;
-
+const parts = [title, type, genres, platform, lifecycle, year].filter(Boolean);
+return `${i + 1}. ${parts.join(' | ')}`;
+    
   } catch (e) {
     console.error("Option fetch failed:", e);
     const fallbackYear = (r.release_date || r.first_air_date || '').split('-')[0];
