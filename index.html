@@ -1393,12 +1393,18 @@ for (const [k, v] of Object.entries(fields)) {
   const value = v;
 
   // 🔥 SPECIAL HANDLING FOR GENRES
-  if (lowerKey === 'genres' && value) {
-    const arr = value.split(',').map(x => x.trim()).filter(Boolean);
-    out.primary_genre = arr[0] || '';
-    out.subgenres = arr.slice(1).join(', ');
-    continue; // ⛔ skip normal mapping
-  }
+if (lowerKey === 'genres' && value) {
+  const arr = Array.isArray(value)
+    ? value
+    : String(value)
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean);
+
+  out.primary_genre = arr[0] || '';
+  out.subgenres = arr.slice(1).join(', ');
+  continue;
+}
 
   const norm = keyMap[lowerKey] || k;
   out[norm] = value;
