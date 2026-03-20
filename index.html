@@ -2144,10 +2144,88 @@ if (jsonMatch) {
   }
 }
     
-const cleaned = aiText
+let cleaned = aiText
   .replace(/\\n/g, '')
   .replace(/\\"/g, '"')
   .trim();
+
+// --- AUTO TMDB ENRICHMENT (AI FLOW) ---
+const titleMatch = cleaned.match(/Title:\s*(.*)/i);
+
+if (titleMatch) {
+  const aiTitle = titleMatch[1].trim();
+
+  try {
+    const tmdbData = await fetchTMDbData(aiTitle);
+
+    if (tmdbData?.results?.length) {
+      const selected = tmdbData.results[0];
+
+      const endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
+
+      const detailsRes = await fetch(
+        `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
+      );
+      const details = await detailsRes.json();
+
+      if (details && details.success !== false) {
+
+        // --- GENRES ---
+        const genreArray = (details.genres?.map(g => g.name) || [])
+          .map(g => g === "Science Fiction" ? "Sci-Fi" : g);
+
+        if (genreArray.includes("Sci-Fi")) {
+          genreArray.sort((a, b) => (a === "Sci-Fi" ? -1 : b === "Sci-Fi" ? 1 : 0));
+        }
+
+        const primaryGenre = genreArray[0] || "";
+        const subGenres = genreArray.slice(1).join(', ');
+
+        // --- YEAR ---
+        const year = (details.first_air_date || details.release_date || "").split("-")[0];
+
+        // --- PLATFORM ---
+        const platform = endpoint === "tv"
+          ? details.networks?.[0]?.name || ""
+          : details.production_companies?.[0]?.name || "";
+
+        // --- LIFECYCLE ---
+        let lifecycle = "";
+        if (endpoint === "tv") {
+          lifecycle =
+            details.status === "Returning Series" ? "Ongoing" :
+            details.status === "Ended" ? "Finished" :
+            details.status === "Canceled" ? "Cancelled" : "";
+        }
+
+        // --- IMDb ---
+        let imdbId = details.imdb_id || "";
+
+        if (!imdbId && endpoint === "tv") {
+          try {
+            const extRes = await fetch(
+              `https://api.themoviedb.org/3/tv/${selected.id}/external_ids?api_key=${API_KEY}`
+            );
+            const ext = await extRes.json();
+            imdbId = ext.imdb_id || "";
+          } catch {}
+        }
+
+        // --- PATCH DISPLAY ---
+        cleaned = cleaned
+          .replace(/Genre:.*/i, `Genre: ${primaryGenre}`)
+          .replace(/Subgenres:.*/i, `Subgenres: ${subGenres}`)
+          .replace(/Platform:.*/i, `Platform: ${platform}`)
+          .replace(/Lifecycle:.*/i, `Lifecycle: ${lifecycle}`)
+          .replace(/Year:.*/i, `Year: ${year}`)
+          .replace(/IMDb ID:.*/i, `IMDb ID: ${imdbId}`);
+
+      }
+    }
+  } catch (e) {
+    console.error("AI enrichment failed:", e);
+  }
+}
 
 let jsonAppliedMsg = null;
 
@@ -2160,7 +2238,7 @@ if (userSaidYes) {
     await saveConvo();
 
     removeTyping();
-    addMsg('ai', aiText, jsonAppliedMsg);
+    addMsg('ai', cleaned, jsonAppliedMsg);
   } catch(e) {
     removeTyping();
     addMsg('ai', `⚠️ Error reaching AI: ${e.message}`);
