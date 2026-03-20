@@ -558,7 +558,6 @@
   .mc-tone   { background: rgba(255,106,138,0.08); color: #ff9ab8; border: 1px solid rgba(255,106,138,0.2); }
   .mc-platform { background: rgba(96,165,250,0.08); color: var(--watchlist); border: 1px solid rgba(96,165,250,0.2); }
   .mc-lifecycle { background: rgba(255,255,255,0.05); color: var(--text3); border: 1px solid var(--border2); }
-  .mc-rating { background: rgba(255,193,7,0.1); color: #ffd060; border: 1px solid rgba(255,193,7,0.2); }
   .mc-year   { background: rgba(255,255,255,0.04); color: var(--text3); border: 1px solid var(--border2); }
   .mc-date   { background: rgba(74,222,128,0.07); color: #7ee8a2; border: 1px solid rgba(74,222,128,0.18); }
 
@@ -897,7 +896,6 @@ function renderSearch(query) {
       item.tone ? `<span class="meta-chip mc-tone">${esc(item.tone)}</span>` : '',
       item.platform ? `<span class="meta-chip mc-platform">📺 ${esc(item.platform)}</span>` : '',
       item.lifecycle ? `<span class="meta-chip mc-lifecycle">${esc(item.lifecycle)}</span>` : '',
-      item.rating ? `<span class="meta-chip mc-rating">★ ${esc(item.rating)}</span>` : '',
       item.runtime ? `<span class="meta-chip mc-year">${esc(item.runtime)} min</span>` : '',
       item.year ? `<span class="meta-chip mc-year">${esc(item.year)}</span>` : '',
       item.date_watched ? `<span class="meta-chip mc-date">📅 ${esc(item.date_watched)}</span>` : '',
@@ -1173,7 +1171,6 @@ function importRows(rows, statusEl) {
         subgenres: row.subgenres || '',
         tone: row.tone || '',
         platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
-        rating: row.rating || '',
         lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
         progress: row.progress || '',
         year: row.year || '',
@@ -1313,7 +1310,6 @@ function importRowsSilent(rows) {
         subgenres: row.subgenres || '',
         tone: row.tone || '',
         platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
-        rating: row.rating || '',
         lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
         progress: row.progress || '',
         year: row.year || '',
@@ -1517,7 +1513,7 @@ function buildLibraryContext() {
   const watchlist = library.filter(x=>x.status==='Watchlist').slice().reverse().slice(0,80);
   const allTitles = library.map(x=>x.title).join('|');
 
-  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.rating||''}|${x.progress||''}|${x.year||''}|${x.imdb_id||''}]`).join('\n');
+  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdb_id||''}]`).join('\n');
 
   const incomplete = library
     .filter(x => !x.format || !x.genre || !x.year || !x.imdb_id || (!x.lifecycle && x.format !== 'Movie'))
@@ -1546,7 +1542,7 @@ ${incomplete.length ? fmt(incomplete) : 'None'}
 ALL TITLES (pipe-separated, for duplicate checking):
 ${allTitles || 'Empty library'}
 
-Format of each entry: Title [Format|Status|Platform|Genre|Tone|Lifecycle|Rating|Progress|Year|IMDbID]`;
+Format of each entry: Title [Format|Status|Platform|Genre|Tone|Lifecycle|Progress|Year|IMDb ID]`;
 }
 
 const SYSTEM_PROMPT = `You are a personal watch tracker assistant managing the user's watchlist and making recommendations.
@@ -1623,9 +1619,9 @@ RULES:
   - Only show full details for unusual or edge cases
 
 Sort groups by importance:
-1. Critical missing fields (platform, format)
-2. Usability missing fields (tone, rating)
-3. Minor gaps (lifecycle for movies, optional fields, etc.)
+1. Critical missing fields (platform, format, genre)
+2. Usability missing fields (tone, lifecycle)
+3. Minor gaps (IMDb ID, optional fields, etc.)
 
 VALID FIELD VALUES:
 - Status: Watched, Watching, Watchlist, Abandoned
