@@ -1120,7 +1120,7 @@ function normalizeRow(row) {
     if (norm === '_ignore') continue; // skip ignored columns
     const key = norm || k.toLowerCase();
     let val = (v === null || v === undefined) ? '' : fixEncoding(String(v).trim());
-
+ 
     // Normalise IMDb format values
     if (key === 'format' && val) {
       val = formatMap[val.toLowerCase().replace(/\s/g,'')] || val;
@@ -1158,10 +1158,33 @@ function importRows(rows, statusEl) {
     if (existing) {
       duplicates.push(row.title);
       let changed = false;
-      for (const [k,v] of Object.entries(row)) {
-        if (v && !existing[k]) { existing[k] = v; changed = true; }
-      }
-      if (changed) updated++; else skipped++;
+      
+const changes = [];
+
+for (const [k, v] of Object.entries(row)) {
+  if (!v) continue;
+
+  // Only update if value is different
+  if (existing[k] !== v) {
+    changes.push(`${k}: ${existing[k] || '(empty)'} → ${v}`);
+  }
+}
+      
+if (changes.length) {
+  addMsg('assistant', `
+🔄 Updating: ${row.title}
+
+Changes:
+${changes.join('\n')}
+
+Confirm? (yes/no)
+  `);
+
+  pendingUpdate = { existing, row };
+  return;
+} else {
+  skipped++;
+}
     } else {
       library.push({
         title: row.title,
@@ -1756,6 +1779,27 @@ updates.forEach(item => {
 async function sendMessage(userText) {
   if (!userText.trim()) return;
   addMsg('user', userText);
+
+  if (pendingUpdate) {
+  const reply = userText.toLowerCase().trim();
+
+  if (['yes', 'y', 'ok', 'okay', 'confirm'].includes(reply)) {
+    Object.assign(pendingUpdate.existing, pendingUpdate.row);
+    saveLibrary();
+    pendingUpdate = null;
+
+    addMsg('assistant', '✅ Update applied!');
+} else if (['no', 'n', 'cancel'].includes(reply)) {
+  pendingUpdate = null;
+  addMsg('assistant', '❌ Update cancelled.');
+} else {
+  addMsg('assistant', 'Please reply yes or no 🙂');
+  return;
+}
+  }
+
+  return;
+}
   
 if (pendingSelection) {
   
