@@ -1458,12 +1458,14 @@ if (lowerKey === 'genres' && value) {
   out.genre = out.primary_genre;
 }
 
-  if (out.platform) {
-  const list = out.platform.split(',').map(p => p.trim().toLowerCase());
+if (out.platform) {
+  const cleaned = [...new Set(
+    out.platform.split(",").map(p =>
+      p.toLowerCase().includes("prime") ? "Prime Video" : p.trim()
+    )
+  )];
 
-  if (p.includes('apple')) out.platform = 'Apple TV';
-  else if (p.includes('netflix')) out.platform = 'Netflix';
-  else if (p.includes('prime')) out.platform = 'Prime Video';
+  out.platform = cleaned.join(", ");
 }
 
 if (out.status) {
@@ -1522,7 +1524,7 @@ const fields = normalizeFields(rawFields);
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
         
-        const rawFields = op.fields || op;
+const rawFields = op.fields || op;
 console.log('RAW FIELDS:', rawFields);
 
 const normalized = normalizeFields(rawFields);
@@ -1532,6 +1534,8 @@ const newItem = {
   title: op.title,
   ...normalized,
   status: normalized.status || 'Watchlist'
+  library.push(newItem);
+        added++;
 };
 }
 
