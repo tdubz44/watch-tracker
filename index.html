@@ -994,7 +994,7 @@ function renderWatching() {
           ${item.lifecycle ? `<span class="badge" style="background:rgba(255,255,255,0.04);color:var(--text3);border:1px solid var(--border2)">${esc(item.lifecycle)}</span>` : ''}
         </div>
       </div>
-      ${item.genre ? `<div class="wc-badges"><span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border2)">${esc(item.genre)}</span></div>` : ''}
+      ${item.primary_genre ? `<div class="wc-badges"><span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border2)">${esc(item.primary_genre)}</span></div>` : ''}
       ${details ? `<div class="wc-details">${details}</div>` : ''}
       ${item.notes ? `<div class="wc-notes-text">${esc(item.notes)}</div>` : ''}
     </div>`;
@@ -1729,12 +1729,17 @@ if (typeof parsed === 'string') {
 }
 
 const updates = Array.isArray(parsed) ? parsed : [parsed];
-    updates.forEach(item => {
+updates.forEach(item => {
   if (item.genre && !item.primary_genre) {
-    item.primary_genre = item.genre;
+    const parts = item.genre.split(',').map(s => s.trim()).filter(Boolean);
+
+    item.primary_genre = parts[0] || '';
+    item.subgenres = parts.slice(1).join(', ');
+
     delete item.genre;
   }
 });
+    
     const result = applyUpdates(updates);
     saveLibrary();
     updateStats();
