@@ -1572,8 +1572,8 @@ MODES:
 - One line per field
 - Format EXACTLY: Field: Value
 - Do NOT include any extra text before or after the fields
-- You MUST include ALL fields, even if the value is unknown
-- If a value is unknown, leave the VALUE empty after the colon
+- You MUST include ALL fields
+- If a value is unknown, leave the VALUE empty after the colon (never write "unknown")
 - Example: Subgenres
 - Do NOT omit any fields
 - After listing fields, ask for confirmation on a new line:
@@ -1808,6 +1808,13 @@ const imdbId = details.imdb_id || '';
 
 // Status
 const status = pendingSelection.normalized.status || "Watchlist";
+
+// CLEAN UNKNOWN VALUES
+Object.keys(pendingSelection.normalized).forEach(key => {
+  if (pendingSelection.normalized[key]?.toLowerCase() === "unknown") {
+    pendingSelection.normalized[key] = "";
+  }
+});
   
   // --- DISPLAY ---
 let display = `Title: ${title}`;
@@ -1822,7 +1829,7 @@ if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
 if (status) display += `\nStatus: ${status}`;
 if (year) display += `\nYear: ${year}`;
 if (imdbId) display += `\nIMDb ID: ${imdbId}`;
-  
+
   // --- SAVE ---
 const newItem = {
   title,
