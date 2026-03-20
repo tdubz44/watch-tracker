@@ -2185,9 +2185,33 @@ if (titleMatch) {
         const year = (details.first_air_date || details.release_date || "").split("-")[0];
 
         // --- PLATFORM ---
-        const platform = endpoint === "tv"
-          ? details.networks?.[0]?.name || ""
-          : details.production_companies?.[0]?.name || "";
+let platform = "";
+
+try {
+  const providerRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${API_KEY}`
+  );
+  const providerData = await providerRes.json();
+
+  const region = providerData.results?.CA; // 🇨🇦 change if needed
+
+  if (region?.flatrate?.length) {
+    platform = region.flatrate
+      .map(p => p.provider_name)
+      .join(", ");
+  } else if (region?.ads?.length) {
+    platform = region.ads
+      .map(p => p.provider_name)
+      .join(", ");
+  } else if (region?.rent?.length) {
+    platform = region.rent
+      .map(p => p.provider_name)
+      .join(", ");
+  }
+
+} catch (e) {
+  console.error("Provider fetch failed:", e);
+}
 
         // --- LIFECYCLE ---
         let lifecycle = "";
@@ -2219,6 +2243,9 @@ if (titleMatch) {
           .replace(/Lifecycle:.*/i, `Lifecycle: ${lifecycle}`)
           .replace(/Year:.*/i, `Year: ${year}`)
           .replace(/IMDb ID:.*/i, `IMDb ID: ${imdbId}`);
+        if (!cleaned.match(/IMDb ID:/i) && imdbId) {
+  cleaned += `\nIMDb ID: ${imdbId}`;
+}
 
       }
     }
