@@ -1913,16 +1913,14 @@ try {
 console.log("RAW providers:", providers.map(p => p.provider_name));
     
 const names = providers.map(p => {
-const name = p.provider_name.toLowerCase().replace(/[^a-z]/g, "");
+const raw = p.provider_name.toLowerCase();
 
-  return name.includes("prime")
+  return raw.includes("prime")
     ? "Prime Video"
     : p.provider_name;
 });
 
 const unique = [...new Set(names)];
-
-console.log("NORMALIZED unique:", unique);
     
 unique.sort((a, b) => a.localeCompare(b));
     
@@ -1932,6 +1930,20 @@ unique.sort((a, b) => a.localeCompare(b));
 } catch (e) {
   console.error("Provider fetch failed:", e);
 }
+
+    // --- DISPLAY ---
+let display = `Title: ${title}`;
+
+if (type) display += `\nFormat: ${type}`;
+if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
+if (subGenres) display += `\nSub-genres: ${subGenres}`;
+if (platform) display += `\nPlatform: ${platform}`;
+if (seasons) display += `\nSeasons: ${seasons}`;
+if (runtime) display += `\nRuntime: ${runtime} min`;
+if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
+if (status) display += `\nStatus: ${status}`;
+if (year) display += `\nYear: ${year}`;
+if (imdbId) display += `\nIMDb ID: ${imdbId}`;
 
   // --- LIFECYCLE ---
   let lifecycle = "";
@@ -1962,20 +1974,6 @@ Object.keys(pendingSelection.normalized).forEach(key => {
     pendingSelection.normalized[key] = "";
   }
 });
-  
-  // --- DISPLAY ---
-let display = `Title: ${title}`;
-
-if (type) display += `\nFormat: ${type}`;
-if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
-if (subGenres) display += `\nSub-genres: ${subGenres}`;
-if (platform) display += `\nPlatform: ${platform}`;
-if (seasons) display += `\nSeasons: ${seasons}`;
-if (runtime) display += `\nRuntime: ${runtime} min`;
-if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
-if (status) display += `\nStatus: ${status}`;
-if (year) display += `\nYear: ${year}`;
-if (imdbId) display += `\nIMDb ID: ${imdbId}`;
 
   // --- SAVE ---
 const genre = primaryGenre;
@@ -2086,10 +2084,12 @@ try {
       ...(region.ads || [])
     ];
 
+console.log("RAW providers:", providers.map(p => p.provider_name));
+    
 const names = providers.map(p => {
-  const name = p.provider_name.toLowerCase().replace(/[^a-z]/g, "");
-
-  return name.includes("prime")
+const raw = p.provider_name.toLowerCase();
+  
+  return raw.includes("prime")
     ? "Prime Video"
     : p.provider_name;
 });
