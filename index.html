@@ -1944,7 +1944,15 @@ const unique = [...new Set(names)];
     
 unique.sort((a, b) => a.localeCompare(b));
     
-    platform = unique.join(", ");
+const cleaned = [...new Set(
+  unique.map(p =>
+    p.toLowerCase().includes("prime") ? "Prime Video" : p
+  )
+)];
+
+platform = cleaned.join(", ");
+
+    console.log("FINAL CLEANED PLATFORM:", platform);
   }
 
 } catch (e) {
@@ -2118,7 +2126,15 @@ const unique = [...new Set(names)];
 
 unique.sort((a, b) => a.localeCompare(b));
 
-platform = unique.join(", ");
+const cleaned = [...new Set(
+  unique.map(p =>
+    p.toLowerCase().includes("prime") ? "Prime Video" : p
+  )
+)];
+
+platform = cleaned.join(", ");
+
+    console.log("FINAL CLEANED PLATFORM:", platform);
   }
 
 } catch (e) {
