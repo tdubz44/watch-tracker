@@ -1846,6 +1846,17 @@ const newItem = {
   status: pendingSelection.normalized.status || "Watchlist"
 };
 
+  const exists = library.some(item =>
+  item.title?.toLowerCase() === newItem.title.toLowerCase() &&
+  item.format === newItem.format
+);
+
+if (exists) {
+  addMsg('assistant', `Already in library: ${newItem.title} (${newItem.format}) ⚠️`);
+  pendingSelection = null;
+  return;
+}
+  
   library.push(newItem);
   saveLibrary();
 
