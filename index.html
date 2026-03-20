@@ -731,7 +731,7 @@ const VALID_LIFECYCLE = ['Finished','Ongoing','Cancelled'];
 const SCHEMA = {
   title: '',
   year: '',
-  imdb_id: '',
+  imdbid: '',
   format: '',
   lifecycle: '',
   status: '',
@@ -1104,7 +1104,7 @@ function normalizeRow(row) {
     'modified': '_ignore', 'url': '_ignore', 'original title': '_ignore',
     'runtime (mins)': 'runtime', 'runtime': 'runtime', 'runtime (min)': 'runtime',
     'num votes': '_ignore',
-    'const': 'imdb_id',
+    'const': 'imdbid',
   };
 
   // IMDb Title Type → our Format values
@@ -1176,7 +1176,7 @@ function importRows(rows, statusEl) {
         year: row.year || '',
         notes: row.notes || '',
         date_watched: row.date_watched || '',
-        imdb_id: row.imdb_id || '',
+        imdbid: row.imdb_id || '',
         runtime: row.runtime || '',
       });
       added++;
@@ -1315,7 +1315,7 @@ function importRowsSilent(rows) {
         year: row.year || '',
         notes: row.notes || '',
         date_watched: row.date_watched || '',
-        imdb_id: row.imdb_id || '',
+        imdbid: row.imdb_id || '',
         runtime: row.runtime || '',
       });
       added++;
@@ -1513,10 +1513,10 @@ function buildLibraryContext() {
   const watchlist = library.filter(x=>x.status==='Watchlist').slice().reverse().slice(0,80);
   const allTitles = library.map(x=>x.title).join('|');
 
-  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdb_id||''}]`).join('\n');
+  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdbid||''}]`).join('\n');
 
   const incomplete = library
-    .filter(x => !x.format || !x.genre || !x.year || !x.imdb_id || (!x.lifecycle && x.format !== 'Movie'))
+    .filter(x => !x.format || !x.genre || !x.year || !x.imdbid || (!x.lifecycle && x.format !== 'Movie'))
     .slice().reverse().slice(0, 50);
 
   return `=== LIBRARY CONTEXT ===
@@ -1542,7 +1542,7 @@ ${incomplete.length ? fmt(incomplete) : 'None'}
 ALL TITLES (pipe-separated, for duplicate checking):
 ${allTitles || 'Empty library'}
 
-Format of each entry: Title [Format|Status|Platform|Genre|Tone|Lifecycle|Progress|Year|IMDb ID]`;
+Format of each entry: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
 }
 
 const SYSTEM_PROMPT = `You are a personal watch tracker assistant managing the user's watchlist and making recommendations.
@@ -1794,25 +1794,57 @@ if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) 
   // --- TITLE ---
   const title = details.name || details.title;
 
+// Genre split
+const genreList = genres ? genres.split(', ') : [];
+const primaryGenre = genreList[0] || '';
+const subGenres = genreList.slice(1).join(', ');
+
+// Seasons / runtime
+const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
+const runtime = endpoint === 'movie' ? details.runtime : '';
+
+// IMDb ID
+const imdbId = details.imdb_id || '';
+
+// Status
+const status = pendingSelection.normalized.status || "Watchlist";
+  
   // --- DISPLAY ---
 let display = `Title: ${title}`;
 
 if (type) display += `\nFormat: ${type}`;
-if (genres) display += `\nGenre: ${genres}`;
+if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
+if (subGenres) display += `\nSub-genres: ${subGenres}`;
 if (platform) display += `\nPlatform: ${platform}`;
+if (seasons) display += `\nSeasons: ${seasons}`;
+if (runtime) display += `\nRuntime: ${runtime} min`;
 if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
+if (status) display += `\nStatus: ${status}`;
 if (year) display += `\nYear: ${year}`;
+if (imdbId) display += `\nIMDb ID: ${imdbId}`;
   
   // --- SAVE ---
-  const newItem = {
-    title,
-    format: type,
-    genre: genres,
-    platform,
-    lifecycle,
-    year,
-    status: pendingSelection.normalized.status || "Watchlist"
-  };
+const newItem = {
+  title,
+  format: type,
+
+  // Genre
+  genre: primaryGenre,
+  subGenres,
+
+  // Platform + lifecycle
+  platform,
+  lifecycle,
+
+  // Extra metadata
+  seasons,
+  runtime,
+  imdbId,
+
+  // Core
+  year,
+  status: pendingSelection.normalized.status || "Watchlist"
+};
 
   library.push(newItem);
   saveLibrary();
