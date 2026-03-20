@@ -1194,7 +1194,17 @@ Confirm? (yes/no)
         genre: row.genre || '',
         subgenres: row.subgenres || '',
         tone: row.tone || '',
-        platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
+        platform: (() => {
+          if (!row.platform) return "";
+        
+          const cleaned = [...new Set(
+            row.platform.split(",").map(p =>
+              p.toLowerCase().includes("prime") ? "Prime Video" : p.trim()
+            )
+          )];
+        
+          return cleaned.join(", ");
+        })(),
         lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
         progress: row.progress || '',
         year: row.year || '',
@@ -1333,7 +1343,17 @@ function importRowsSilent(rows) {
         primary_genre: row.primary_genre || '',
         subgenres: row.subgenres || '',
         tone: row.tone || '',
-        platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
+        platform: (() => {
+          if (!row.platform) return "";
+        
+          const cleaned = [...new Set(
+            row.platform.split(",").map(p =>
+              p.toLowerCase().includes("prime") ? "Prime Video" : p.trim()
+            )
+          )];
+        
+          return cleaned.join(", ");
+        })(),
         lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
         progress: row.progress || '',
         year: row.year || '',
@@ -2295,11 +2315,13 @@ try {
           } catch {}
         }
 
+console.log("FINAL PLATFORM BEFORE PATCH:", platform);;
+        
         // --- PATCH DISPLAY ---
         cleaned = cleaned
           .replace(/Genre:.*/i, `Genre: ${primaryGenre}`)
           .replace(/Subgenres:.*/i, `Subgenres: ${subGenres}`)
-          .replace(/Platform:.*/i, `Platform: ${platform}`)
+          .replace(/Platform:.*/i, platform ? `Platform: ${platform}` : "Platform:")
           .replace(/Lifecycle:.*/i, `Lifecycle: ${lifecycle}`)
           .replace(/Year:.*/i, `Year: ${year}`)
           .replace(/IMDb ID:.*/i, `IMDb ID: ${imdbId}`);
