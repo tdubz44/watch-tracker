@@ -2037,7 +2037,6 @@ if (exists) {
   pendingSelection.display = display;
 
     return;
-  }
 
   // Handle "add" commands
 if (userText.toLowerCase().startsWith('add')) {
@@ -2291,7 +2290,7 @@ if (userSaidYes) {
   }
 
   sendBtn.disabled = false;
-}
+} // <- END OF ASYNC SENDMESSAGE FUNCTION
 
 document.getElementById('sendBtn').addEventListener('click', () => {
 const input = document.getElementById('chatInput');
