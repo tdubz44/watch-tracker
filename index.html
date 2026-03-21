@@ -2023,7 +2023,9 @@ if (userText.toLowerCase().startsWith('add')) {
 
 const optionsArray = await Promise.all(results.map(async (r, i) => {
 
-const endpoint = r.media_type === 'tv' ? 'tv' : 'movie';
+const endpoint = 
+  r.media_type ||
+  (r.first_air_date ? 'tv' : 'movie');
 
   try {
     const res = await fetch(
