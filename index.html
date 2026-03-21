@@ -1903,11 +1903,6 @@ const subGenres = genreArray.slice(1).join(', ');
   
   // --- PLATFORM ---
   let platform = "";
-  if (endpoint === "tv") {
-    platform = details.networks?.[0]?.name || "";
-  } else {
-    platform = details.production_companies?.[0]?.name || "";
-  }
 
   // --- LIFECYCLE ---
   let lifecycle = "";
