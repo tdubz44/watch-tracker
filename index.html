@@ -1616,6 +1616,15 @@ MODES:
 - NO opinions
 - NO recommendations
 - Extract metadata AND infer obvious fields when highly confident
+- Platform inference rules:
+  - Prefer streaming platforms over TV networks
+  - Use Canadian availability bias: Netflix, Prime, Crave, Disney, Apple TV
+  - Do NOT use broadcast networks (e.g., TNT, NBC, ABC)
+  - If no strong signal, leave blank
+- Tone inference rules:
+  - Always infer tone from genre, themes, and known style
+  - Use 1–3 concise descriptors (e.g., Dark, Character-Driven, Gritty, Emotional, Cerebral)
+  - Tone should almost never be blank
 - Leave fields blank only if uncertain
 - Output ONLY metadata fields
 - One line per field
