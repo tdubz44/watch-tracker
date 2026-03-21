@@ -1819,9 +1819,21 @@ async function sendMessage(userText) {
 }
   
 if (pendingSelection) {
-  
-  const choice = parseInt(userText.trim(), 10);
+  const reply = userText.toLowerCase().trim();
 
+if (reply === 'add') {
+  console.log("CONFIRMING ADD — defaulting to first result");
+
+  // 👇 fall through to existing logic by NOT returning
+}
+
+let choice;
+
+if (reply === 'add') {
+  choice = 1;
+} else {
+  choice = parseInt(userText.trim(), 10);
+}
 if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
 
   const selected = pendingSelection.results[choice - 1];
