@@ -1798,11 +1798,13 @@ async function sendMessage(userText) {
   if (!userText.trim()) return;
   addMsg('user', userText);
 
- if (pendingSelection) {
-    const reply = userText.toLowerCase().trim();
+  const reply = userText.toLowerCase().trim();
+  
+if (pendingSelection) {
 
-   // CONFIRMATION
-   if (['yes', 'y', 'ok', 'okay', 'confirm', 'add'].includes(reply)) {
+  // ✅ CONFIRM STEP
+  if (['yes', 'y', 'ok', 'okay', 'confirm', 'add'].includes(reply)) {
+
     const selected = pendingSelection.selected;
 
     if (!selected) {
@@ -1810,21 +1812,39 @@ async function sendMessage(userText) {
       return;
     }
 
-      pendingSelection = null;
-      return;
-    }
-   
-  let choice;
+    // 🔥 SAVE (this was missing)
+    library.push(pendingSelection.newItem);
 
-if (reply === 'add') {
-  choice = 1;
-} else {
-  choice = parseInt(userText.trim(), 10);
+    saveLibrary();
+    updateStats();
+    refreshSearch();
+    renderWatching();
+
+    addMsg('assistant', `✅ Added "${selected.title || selected.name}"`);
+
+    pendingSelection = null;
+    return;
+  }
+
+  // ✅ NUMBER SELECTION
+  const choice = parseInt(userText.trim(), 10);
+
+  if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
+
+    const selected = pendingSelection.results[choice - 1];
+    pendingSelection.selected = selected;
+
+    // ⚠️ DO NOT clear pendingSelection here
+    // this lets confirmation happen next
+
+  } else {
+    addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
+  }
+
+  return;
 }
-if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
-   
+  
   if (pendingUpdate) {
-  const reply = userText.toLowerCase().trim();
 
   if (['yes', 'y', 'ok', 'okay', 'confirm', 'add'].includes(reply)) {
     Object.assign(pendingUpdate.existing, pendingUpdate.row);
