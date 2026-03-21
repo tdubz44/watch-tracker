@@ -1443,7 +1443,7 @@ if (lowerKey === 'genres' && value) {
 
   if (p.includes('apple')) out.platform = 'Apple TV';
   else if (p.includes('netflix')) out.platform = 'Netflix';
-  else if (p.includes('prime')) out.platform = 'Prime Video';
+  else if (p.includes('prime')) out.platform = 'Prime';
 }
 
 if (out.status) {
@@ -1508,21 +1508,33 @@ console.log('RAW FIELDS:', rawFields);
 const normalized = normalizeFields(rawFields);
 console.log('NORMALIZED:', normalized);
         
+const rawFields = op.fields || op;
+const normalized = normalizeFields(rawFields);
+
 const newItem = {
   title: op.title,
   ...normalized,
   status: normalized.status || 'Watchlist'
 };
-}
 
-// Single result → enrich
-if (tmdbData?.results?.length === 1) {
+// 🔥 FETCH TMDB HERE (this is where it belongs)
+const tmdbData = await 
+  fetchTMDbData(op.title);
+
+if (tmdbData?.results?.length) {
   const r = tmdbData.results[0];
 
+  // Year
   if (!newItem.year && (r.release_date || r.first_air_date)) {
     newItem.year = (r.release_date || r.first_air_date).split("-")[0];
   }
+
+  // OPTIONAL: platform logic later if you want (but NOT required)
 }
+
+// ✅ ACTUALLY SAVE IT
+library.push(newItem);
+added++;
         
       }
   }
