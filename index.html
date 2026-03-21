@@ -2168,7 +2168,12 @@ if (titleMatch) {
     if (tmdbData?.results?.length) {
       const selected = tmdbData.results[0];
 
-      const endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
+      const endpoint = 
+        selected.media_type ||
+        (selected.first_air_date ? 'tv' : 'movie');
+
+      console.log("Selected:", selected);
+      console.log("Endpoint:", endpoint);
 
       const detailsRes = await fetch(
         `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
