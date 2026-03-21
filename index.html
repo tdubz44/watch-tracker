@@ -2198,11 +2198,13 @@ if (titleMatch) {
 
         // --- LIFECYCLE ---
         let lifecycle = "";
+        
         if (endpoint === "tv") {
-          lifecycle =
-            details.status === "Returning Series" ? "Ongoing" :
-            details.status === "Ended" ? "Finished" :
-            details.status === "Canceled" ? "Cancelled" : "";
+          const status = details.status?.toLowerCase();
+          
+          if (details.status === "Returning Series") lifecycle = "Ongoing";
+          else if (details.status === "Ended") lifecycle = "Finished";
+          else if (details.status === "Canceled") lifecycle = "Cancelled";
         }
 
         // --- IMDb ---
@@ -2308,7 +2310,7 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
     </div>
   </div>`;
 }
-}
+
   init();
 </script>
 
