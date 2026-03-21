@@ -2042,11 +2042,6 @@ const subGenres = genreArray.slice(1).join(', ');
     
     // --- PLATFORM ---
     let platform = '';
-    if (endpoint === 'tv') {
-      platform = details.networks?.[0]?.name || '';
-    } else {
-      platform = details.production_companies?.[0]?.name || '';
-    }
 
     // --- LIFECYCLE ---
     let lifecycle = '';
@@ -2188,9 +2183,7 @@ if (titleMatch) {
         const year = (details.first_air_date || details.release_date || "").split("-")[0];
 
         // --- PLATFORM ---
-        const platform = endpoint === "tv"
-          ? details.networks?.[0]?.name || ""
-          : details.production_companies?.[0]?.name || "";
+        const platform = "";
 
         // --- LIFECYCLE ---
         let lifecycle = "";
