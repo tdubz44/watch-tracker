@@ -1862,17 +1862,6 @@ if (pendingSelection) {
 
   return;
 }
-
-  // Determine endpoint
-let endpoint = 'movie';
-
-if (selected.media_type) {
-  endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
-} else if (selected.first_air_date) {
-  endpoint = 'tv';
-} else if (selected.release_date) {
-  endpoint = 'movie';
-}
   
   // Fetch full TMDb details
   const detailsRes = await fetch(
