@@ -2123,6 +2123,7 @@ addMsg('assistant', display);
       console.log("CLEAN TITLE:", cleanTitle);
 
 const existing = findByTitle(cleanTitle);
+    console.log("EXISTING MATCH:", existing);
 
 if (existing) {
   pendingDuplicate = {
@@ -2140,8 +2141,11 @@ if (existing) {
   return;
 }
 
-  console.log("ABOUT TO FETCH TMDB");
+  console.log("ABOUT TO FETCH TMDB:", cleanTitle);
+  
     const tmdbData = await fetchTMDbData(cleanTitle);
+
+  console.log("TMDB SEARCH RESULT:", tmdbData);
 
     if (!tmdbData?.results?.length) {
       addMsg('assistant', '❌ No results found.');
