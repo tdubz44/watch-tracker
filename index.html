@@ -2059,8 +2059,14 @@ if (pendingDelete) {
 }
   
   if (pendingSelection && pendingSelection.results) {
-    const choice = parseInt(userText.trim(), 10);
-
+    if (isNegative(reply)) {
+      pendingSelection = null;
+      addMsg('assistant', '❌ Selection cancelled.');
+      return;
+    }
+      const match = reply.match(/\b([1-9]|10)\b/);
+      const choice = match ? parseInt(match[1], 10) : NaN;
+    
     if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
       const selected = pendingSelection.results[choice - 1];
 
