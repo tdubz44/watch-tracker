@@ -2035,7 +2035,7 @@ async function sendMessage(userText) {
 // ============================================================
 if (pendingDuplicate) {
 
-  if (['yes','y','ok','search'].includes(reply)) {
+  if (isAffirmative(reply)) {
 
     const tmdbData = await fetchTMDbData(pendingDuplicate.title);
 
@@ -2060,7 +2060,7 @@ if (pendingDuplicate) {
     return;
   }
 
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingDuplicate = null;
     addMsg('assistant', '👍 Okay, not adding.');
     return;
