@@ -2280,6 +2280,32 @@ if (existing) {
     addMsg('assistant', `I found multiple matches:\n\n${options}\n\nPick a number.`);
     return;
   }
+
+    // 🧠 Fallback to AI if no command matched
+  try {
+    const API_KEY = getOpenAIKey();
+    if (!API_KEY) return;
+  
+    addTyping();
+  
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userText }
+    ];
+  
+    const data = await callAssistant(messages, API_KEY);
+  
+    removeTyping();
+  
+    const reply = data.choices?.[0]?.message?.content?.trim() || "Hmm… I couldn't think of a response.";
+  
+    addMsg("ai", reply);
+  
+  } catch (e) {
+    removeTyping();
+    console.warn("Assistant AI failed:", e);
+    addMsg("ai", "⚠️ Something went wrong reaching the AI.");
+  }
 }
   
  // <- END OF ASYNC SENDMESSAGE FUNCTION
