@@ -2057,10 +2057,29 @@ if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
   const existing = findByTitle(title);
 
-  if (!existing) {
-    addMsg('assistant', `❌ "${title}" not found in your library.`);
-    return;
-  }
+const match = resolveLibraryTitle(title);
+const existing = match.item;
+
+if (!existing) {
+  addMsg('assistant', `❌ "${title}" not found in your library.`);
+  return;
+}
+
+if (match.fuzzy) {
+  pendingDelete = existing;
+
+  let display = `I couldn’t find "${title}" exactly, but I found this close match:\n\n`;
+  display += `Title: ${existing.title}`;
+  if (existing.format) display += `\nFormat: ${existing.format}`;
+  if (existing.year) display += `\nYear: ${existing.year}`;
+  if (existing.platform) display += `\nPlatform: ${existing.platform}`;
+  if (existing.lifecycle) display += `\nLifecycle: ${existing.lifecycle}`;
+  if (existing.status) display += `\nStatus: ${existing.status}`;
+  display += `\n\nRemove this title instead? (yes/no)`;
+
+  addMsg('assistant', display);
+  return;
+}
 
   pendingDelete = existing;
 
