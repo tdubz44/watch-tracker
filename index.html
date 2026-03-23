@@ -1433,8 +1433,28 @@ async function detectToneAI(details, genres = []) {
       }
     ];
 
-    const data = await callAssistant(messages, API_KEY);
-    return data.choices?.[0]?.message?.content?.trim() || "";
+const data = await callAssistant(messages, API_KEY);
+
+if (data?.error) {
+  console.warn("OpenAI error:", data.error);
+
+  const msg = (data.error.message || "").toLowerCase();
+
+  if (
+    msg.includes("invalid") ||
+    msg.includes("incorrect api key") ||
+    msg.includes("unauthorized") ||
+    msg.includes("authentication")
+  ) {
+    localStorage.removeItem("openai_api_key");
+    alert("Invalid OpenAI API key. Please try again.");
+    return await detectToneAI(details, genres);
+  }
+
+  return "";
+}
+
+return data.choices?.[0]?.message?.content?.trim() || "";
 
   } catch (e) {
     console.warn("Tone AI failed:", e);
