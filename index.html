@@ -2439,6 +2439,20 @@ function getTMDbKey(){
   }
   return key;
 }
+
+function getToneCacheKey(title) {
+  return `tone_cache_${normalizeTitle(title)}`;
+}
+
+function getCachedTone(title) {
+  return localStorage.getItem(getToneCacheKey(title)) || "";
+}
+
+function setCachedTone(title, tone) {
+  if (!tone) return;
+  localStorage.setItem(getToneCacheKey(title), tone);
+}
+  
 </script>
 
 
