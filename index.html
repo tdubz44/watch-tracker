@@ -1971,6 +1971,28 @@ if (pendingDelete) {
       const details = await detailsRes.json();
             console.log("TMDB DETAILS:", details);
 
+let platform = "";
+
+try {
+  const providerRes = await fetch(
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${API_KEY}`
+  );
+  const providerData = await providerRes.json();
+
+  const ca = providerData.results?.CA;
+
+  if (ca?.flatrate?.length) {
+    platform = ca.flatrate[0].provider_name;
+  } else if (ca?.ads?.length) {
+    platform = ca.ads[0].provider_name;
+  } else if (ca?.rent?.length) {
+    platform = ca.rent[0].provider_name;
+  }
+
+} catch (e) {
+  console.warn("Provider fetch failed:", e);
+}      
+      
       const title = details.name || details.title;
       const year = (details.first_air_date || details.release_date || '').split('-')[0];
 
@@ -1987,15 +2009,6 @@ if (pendingDelete) {
 
       const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
       const runtime = endpoint === 'movie' ? details.runtime : '';
-
-// --- PLATFORM ---
-let platform = "";
-
-if (details.networks?.length) {
-  platform = details.networks[0].name;
-} else if (details.production_companies?.length) {
-  platform = details.production_companies[0].name;
-}
 
 // --- LIFECYCLE ---
 let lifecycle = "";
