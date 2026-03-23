@@ -2065,8 +2065,8 @@ if (pendingDelete) {
       return;
     }
       const match = reply.match(/\b([1-9]|10)\b/);
-      const choice = match ? parseInt(match[1], 10) : NaN;
-
+      let choice = match ? parseInt(match[1], 10) : NaN;
+    
       // fallback: detect "first", "second", etc.
       const wordMap = {
         first: 1,
