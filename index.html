@@ -754,6 +754,7 @@ let convoHistory = [];
 let currentTab = 'assistant';
 let pendingSelection = null;
 let pendingUpdate = null;
+let pendingDuplicate = null;
 
     const API_KEY = 'eedc718be2818766f1c16eafc83fee0a';
 
@@ -1925,11 +1926,23 @@ const newItem = {
   if (reply.startsWith('add')) {
     const cleanTitle = userText.replace(/^add\s+/i, '').trim();
 
-    const existing = findByTitle(cleanTitle);
-    if (existing) {
-      addMsg('assistant', `⚠️ "${existing.title}" already exists in your library.`);
-      return;
-    }
+const existing = findByTitle(cleanTitle);
+
+if (existing) {
+  pendingDuplicate = {
+    title: cleanTitle
+  };
+
+  addMsg(
+    'assistant',
+    `⚠️ "${existing.title}" already exists as ${existing.format} (${existing.year || 'unknown year'}).\n\nDo you want to search for a different version? (yes/no)`
+  );
+
+  return;
+}
+
+  return;
+}
 
     const tmdbData = await fetchTMDbData(cleanTitle);
 
