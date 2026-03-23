@@ -1669,9 +1669,22 @@ async function fetchTMDbData(title) {
   const url = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(title)}`;
 
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    return data;
+const res = await fetch(url);
+const data = await res.json();
+
+if (data?.status_code === 7 || data?.status_message?.toLowerCase().includes("invalid api key")) {
+  localStorage.removeItem("tmdb_api_key");
+  api_key = "";
+  alert("Invalid TMDb API key. Please try again.");
+
+  const newKey = getTMDbKey();
+  if (!newKey) return null;
+
+  return await fetchTMDbData(title);
+}
+
+return data;
+    
   } catch (err) {
     console.error("TMDb fetch error:", err);
     return null;
@@ -2049,7 +2062,7 @@ let platform = "";
 
 try {
   const providerRes = await fetch(
-    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${API_KEY}`
+    `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${key}`
   );
   const providerData = await providerRes.json();
 
