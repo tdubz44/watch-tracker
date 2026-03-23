@@ -2479,8 +2479,9 @@ if (existing) {
       reply.includes('mystery') ||
       reply.includes('crime') ||
       reply.includes('fantasy') ||
-      reply.includes('documentary')
-    ) {
+      reply.includes('documentary') ||
+      reply.includes('duplicate')
+          ) {
       const items = filterLibraryByReply(reply);
     
       if (!items.length) {
@@ -2741,6 +2742,19 @@ function filterLibraryByReply(reply) {
     });
   }
 
+  if (reply.includes('duplicate')) {
+  const seen = new Map();
+
+  items = items.filter(item => {
+    const key = item.title.toLowerCase();
+    if (seen.has(key)) {
+      return true; // this is a duplicate
+    } else {
+      seen.set(key, true);
+      return false;
+    }
+  });
+}
   return items;
 }  
   
