@@ -2394,7 +2394,11 @@ async function callAssistant(messages, API_KEY){
 async function getOpenAIKey() {
   try {
     const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev");
+      console.log("KEY FETCH STATUS:", res.status);
+    
     const data = await res.json();
+      console.log("KEY FETCH DATA:", data);
+    
     return data.key || "";
   } catch (e) {
     console.warn("Failed to get OpenAI key from Cloudflare:", e);
