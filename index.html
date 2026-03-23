@@ -1840,6 +1840,7 @@ async function sendMessage(userText) {
         `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
       );
       const details = await detailsRes.json();
+            console.log("TMDB DETAILS:", details);
 
       const title = details.name || details.title;
       const year = (details.first_air_date || details.release_date || '').split('-')[0];
@@ -1858,22 +1859,56 @@ async function sendMessage(userText) {
       const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
       const runtime = endpoint === 'movie' ? details.runtime : '';
 
-      const newItem = {
-        title,
-        format: type,
-        genre: primaryGenre,
-        subGenres,
-        seasons,
-        runtime,
-        year,
-        status: 'Watchlist'
-      };
+// --- PLATFORM ---
+let platform = "";
+
+if (details.networks?.length) {
+  platform = details.networks[0].name;
+} else if (details.production_companies?.length) {
+  platform = details.production_companies[0].name;
+}
+
+// --- LIFECYCLE ---
+let lifecycle = "";
+
+if (endpoint === "tv") {
+  if (details.status === "Returning Series") lifecycle = "Ongoing";
+  else if (details.status === "Ended") lifecycle = "Finished";
+  else if (details.status === "Canceled") lifecycle = "Cancelled";
+}
+
+// --- STATUS ---
+const status = "Watchlist";
+
+// --- FINAL OBJECT ---
+const newItem = {
+  title,
+  format: type,
+
+  // Genre
+  genre: primaryGenre,
+  subGenres,
+
+  // Platform + lifecycle
+  platform,
+  lifecycle,
+
+  // Extras
+  seasons,
+  runtime,
+
+  // Core
+  year,
+  status
+};
 
       let display = `Title: ${title}`;
       if (type) display += `\nFormat: ${type}`;
       if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
       if (subGenres) display += `\nSub-genres: ${subGenres}`;
       if (seasons) display += `\nSeasons: ${seasons}`;
+      if (platform) display += `\nPlatform: ${platform}`;
+      if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
       if (runtime) display += `\nRuntime: ${runtime} min`;
       if (year) display += `\nYear: ${year}`;
       display += `\n\nConfirm add? (yes/no)`;
