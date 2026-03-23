@@ -1663,7 +1663,10 @@ added++;
 
 async function fetchTMDbData(title) {
 
-  const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(title)}`;
+  const key = getTMDbKey();
+  if (!key) return null;
+  
+  const url = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(title)}`;
 
   try {
     const res = await fetch(url);
