@@ -2117,6 +2117,8 @@ addMsg('assistant', display);
 }
   
   if (reply.startsWith('add')) {
+    console.log("ADD BLOCK HIT");
+    
     const cleanTitle = userText.replace(/^add\s+/i, '').trim();
 
 const existing = findByTitle(cleanTitle);
