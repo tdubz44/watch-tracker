@@ -2669,6 +2669,51 @@ function setCachedTone(title, tone) {
   if (!tone) return;
   localStorage.setItem(getToneCacheKey(title), tone);
 }
+
+function filterLibraryByReply(reply) {
+  let items = [...library];
+
+  const hasWatched = reply.includes('watched');
+  const hasWatching = reply.includes('watching');
+  const hasAbandoned = reply.includes('abandoned');
+  const hasWatchlist = reply.includes('watchlist') || reply.includes('queue');
+
+  if (hasWatched) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watched');
+  } else if (hasWatching) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watching');
+  } else if (hasAbandoned) {
+    items = items.filter(item => item.status?.toLowerCase() === 'abandoned');
+  } else if (hasWatchlist) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watchlist');
+  }
+
+  if (reply.includes('movie')) {
+    items = items.filter(item => item.format?.toLowerCase() === 'movie');
+  } else if (
+    reply.includes('series') ||
+    reply.includes('show') ||
+    reply.includes('shows')
+  ) {
+    items = items.filter(item => {
+      const f = item.format?.toLowerCase();
+      return f === 'series' || f === 'miniseries';
+    });
+  }
+
+  const genreWords = ['drama', 'sci-fi', 'comedy', 'horror', 'thriller', 'romance', 'mystery', 'crime', 'fantasy', 'documentary'];
+  const matchedGenre = genreWords.find(g => reply.includes(g));
+
+  if (matchedGenre) {
+    items = items.filter(item => {
+      const genre = (item.genre || item.primary_genre || '').toLowerCase();
+      const sub = (item.subGenres || item.subgenres || '').toLowerCase();
+      return genre.includes(matchedGenre) || sub.includes(matchedGenre);
+    });
+  }
+
+  return items;
+}  
   
 </script>
 
