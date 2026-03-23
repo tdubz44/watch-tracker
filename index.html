@@ -2123,6 +2123,15 @@ if (pendingDelete) {
         }
       }
     
+    // 🤖 AI fallback if no valid number detected
+if (isNaN(choice)) {
+  const aiChoice = await interpretSelectionAI(reply, pendingSelection.results);
+  if (aiChoice) {
+    choice = aiChoice;
+    console.log("🤖 AI selected option:", choice);
+  }
+}
+    
     if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
       const selected = pendingSelection.results[choice - 1];
 
