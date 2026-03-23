@@ -1416,9 +1416,11 @@ function normalizePlatform(name) {
 async function detectToneAI(details, genres = []) {
   try {
     const API_KEY = getOpenAIKey();
-    if (!API_KEY) return "";
+      if (!API_KEY) return "";
 
     const title = details.name || details.title || "";
+    const cached = getCachedTone(title);
+      if (cached) return cached;
     const overview = details.overview || "";
     const genreText = genres.join(", ");
 
