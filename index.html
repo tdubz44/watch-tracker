@@ -2464,6 +2464,35 @@ if (existing) {
     return;
   }
 
+    if (
+      reply.includes('watched') ||
+      reply.includes('watching') ||
+      reply.includes('abandoned') ||
+      reply.includes('watchlist') ||
+      reply.includes('queue') ||
+      reply.includes('drama') ||
+      reply.includes('sci-fi') ||
+      reply.includes('comedy') ||
+      reply.includes('horror') ||
+      reply.includes('thriller') ||
+      reply.includes('romance') ||
+      reply.includes('mystery') ||
+      reply.includes('crime') ||
+      reply.includes('fantasy') ||
+      reply.includes('documentary')
+    ) {
+      const items = filterLibraryByReply(reply);
+    
+      if (!items.length) {
+        addMsg('assistant', `No matching titles found.`);
+        return;
+      }
+    
+      const list = items.map(i => `• ${i.title}`).join('\n');
+      addMsg('assistant', `Matching titles:\n${list}`);
+      return;
+    }  
+  
     // 🧠 Fallback to AI if no command matched
   try {
     const API_KEY = getOpenAIKey();
