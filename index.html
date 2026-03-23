@@ -1971,7 +1971,7 @@ async function sendMessage(userText) {
       });
   
   if (pendingSelection && pendingSelection.newItem) {
-    if (['yes','y','ok','okay','confirm','add'].includes(reply)) {
+    if (isAffirmative(reply)) {
       library.push(pendingSelection.newItem);
       saveLibrary();
       updateStats();
@@ -1982,7 +1982,7 @@ async function sendMessage(userText) {
       return;
     }
 
-    if (['no','n','cancel'].includes(reply)) {
+    if (isNegative(reply)) {
       pendingSelection = null;
       addMsg('assistant', '❌ Cancelled.');
       return;
