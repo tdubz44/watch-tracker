@@ -2120,6 +2120,7 @@ addMsg('assistant', display);
     console.log("ADD BLOCK HIT");
     
     const cleanTitle = userText.replace(/^add\s+/i, '').trim();
+      console.log("CLEAN TITLE:", cleanTitle);
 
 const existing = findByTitle(cleanTitle);
 
@@ -2139,6 +2140,7 @@ if (existing) {
   return;
 }
 
+  console.log("ABOUT TO FETCH TMDB");
     const tmdbData = await fetchTMDbData(cleanTitle);
 
     if (!tmdbData?.results?.length) {
