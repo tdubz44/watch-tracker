@@ -1415,39 +1415,25 @@ function normalizePlatform(name) {
 
 async function detectToneAI(details, genres = []) {
   try {
-    const openai_api_key = await getOpenAIKey();
-    
+    const API_KEY = getOpenAIKey();
+    if (!API_KEY) return "";
+
     const title = details.name || details.title || "";
     const overview = details.overview || "";
     const genreText = genres.join(", ");
 
-    const prompt = `
-Give a short comma-separated list (max 3) describing the tone of this title.
-
-Be concise (1–3 words per tone). No explanations.
-
-Title: ${title}
-Genres: ${genreText}
-Overview: ${overview}
-`;
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${openai_api_key}`
+    const messages = [
+      {
+        role: "system",
+        content: "Return only a short comma-separated list of up to 3 tone labels. No explanation."
       },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        messages: [
-          { role: "system", content: "You describe tone using short labels only." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.3
-      })
-    });
+      {
+        role: "user",
+        content: `Title: ${title}\nGenres: ${genreText}\nOverview: ${overview}`
+      }
+    ];
 
-    const data = await res.json();
+    const data = await callAssistant(messages, API_KEY);
     return data.choices?.[0]?.message?.content?.trim() || "";
 
   } catch (e) {
