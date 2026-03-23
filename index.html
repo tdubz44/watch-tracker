@@ -1863,6 +1863,7 @@ async function sendMessage(userText) {
 
   addMsg('user', userText);
   const reply = userText.toLowerCase().trim();
+    console.log("INPUT:", reply);
 
   if (pendingSelection && pendingSelection.newItem) {
     if (['yes','y','ok','okay','confirm','add'].includes(reply)) {
