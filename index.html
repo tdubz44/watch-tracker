@@ -1456,8 +1456,12 @@ if (data?.error) {
   return "";
 }
 
-return data.choices?.[0]?.message?.content?.trim() || "";
+const tone = data.choices?.[0]?.message?.content?.trim() || "";
 
+if (tone) setCachedTone(title, tone);
+
+return tone;
+    
   } catch (e) {
     console.warn("Tone AI failed:", e);
     return "";
