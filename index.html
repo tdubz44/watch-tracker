@@ -1960,8 +1960,9 @@ updates.forEach(item => {
 async function sendMessage(userText) {
   if (!userText.trim()) return;
 
-  addMsg('user', userText);
   const reply = userText.toLowerCase().trim();
+
+  addMsg('user', userText);
       console.log("STATE CHECK:", {
         reply,
         pendingSelection,
