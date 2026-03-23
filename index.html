@@ -2316,6 +2316,12 @@ const newItem = {
     return;
   }
 
+  if (reply.includes('duplicate') && (reply.startsWith('delete ') || reply.startsWith('remove ') || reply.startsWith('merge '))) {
+    pendingDuplicate = true;
+    addMsg('assistant', 'I found duplicate titles. Do you want me to merge duplicates by keeping one copy of each title? (yes/no)');
+    return;
+  }
+  
   if (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) {
   const phrase = reply.replace(/^(clear|delete|remove)\s+/, '').trim();
 
