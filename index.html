@@ -2072,7 +2072,7 @@ if (pendingDuplicate) {
 
 if (pendingDelete) {
 
-  if (['yes','y','confirm'].includes(reply)) {
+  if (isAffirmative(reply)) {
 
     library = library.filter(item => item !== pendingDelete);
 
@@ -2086,7 +2086,7 @@ if (pendingDelete) {
     return;
   }
 
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingDelete = null;
     addMsg('assistant', 'Cancelled.');
     return;
