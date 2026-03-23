@@ -1945,11 +1945,11 @@ function removeTyping() {
 }
 
 function isAffirmative(text) {
-  return /^(y|yes|yep|yeah|yup|sure|ok|okay|do it|confirm|add it|sounds good)\b/i.test(text.trim());
+  return /\b(y|yes|yep|yeah|yup|sure|ok|okay|do it|confirm|add it|sounds good)\b/i.test(text.trim());
 }
 
 function isNegative(text) {
-  return /^(n|no|nope|nah|cancel|stop|never mind|nevermind|back)\b/i.test(text.trim());
+  return /\b(n|no|nope|nah|cancel|stop|never mind|nevermind|back)\b/i.test(text.trim());
 }  
   
 function parseAndApplyJSON(text) {
