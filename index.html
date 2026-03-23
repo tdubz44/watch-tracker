@@ -1824,6 +1824,46 @@ async function sendMessage(userText) {
     return;
   }
 
+// ============================================================
+// DUPLICATE HANDLER
+// ============================================================
+if (pendingDuplicate) {
+
+  if (['yes','y','ok','search'].includes(reply)) {
+
+    const tmdbData = await fetchTMDbData(pendingDuplicate.title);
+
+    if (!tmdbData?.results?.length) {
+      addMsg('assistant', '❌ No results found.');
+      pendingDuplicate = null;
+      return;
+    }
+
+    const results = tmdbData.results.slice(0, 5);
+
+    pendingSelection = { results };
+    pendingDuplicate = null;
+
+    const options = results.map((r, i) => {
+      const name = r.title || r.name;
+      const year = (r.release_date || r.first_air_date || '').split('-')[0];
+      return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
+    }).join('\n');
+
+    addMsg('assistant', `Here are some alternatives:\n\n${options}\n\nPick a number.`);
+    return;
+  }
+
+  if (['no','n','cancel'].includes(reply)) {
+    pendingDuplicate = null;
+    addMsg('assistant', '👍 Okay, not adding.');
+    return;
+  }
+
+  addMsg('assistant', 'Please reply yes or no 🙂');
+  return;
+}
+  
   if (pendingSelection && pendingSelection.results) {
     const choice = parseInt(userText.trim(), 10);
 
