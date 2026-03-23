@@ -1907,6 +1907,14 @@ function removeTyping() {
   if (t) t.remove();
 }
 
+function isAffirmative(text) {
+  return /^(yes|yep|yeah|yup|sure|ok|okay|do it|confirm|add it|sounds good)\b/i.test(text.trim());
+}
+
+function isNegative(text) {
+  return /^(no|nope|nah|cancel|stop|never mind|nevermind|back)\b/i.test(text.trim());
+}  
+  
 function parseAndApplyJSON(text) {
 const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
   if (!match) return null;
