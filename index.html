@@ -1441,6 +1441,8 @@ async function detectToneAI(details, genres = []) {
       }
     ];
 
+    console.log("🤖 Calling OpenAI for tone...");
+
 const data = await callAssistant(messages, API_KEY);
 
 if (data?.error) {
@@ -1680,9 +1682,7 @@ async function fetchTMDbData(title) {
   
   const url = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(title)}`;
 
-  try {
-    console.log("🤖 Calling OpenAI for tone...");
-    
+  try {    
 const res = await fetch(url);
 const data = await res.json();
 
