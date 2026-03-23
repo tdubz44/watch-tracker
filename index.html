@@ -1401,6 +1401,18 @@ function normalizeTitle(s) {
     .trim();
 }
 
+function normalizePlatform(name) {
+  if (!name) return "";
+
+  const map = {
+    "Amazon Prime Video": "Prime",
+    "Apple TV Plus": "Apple TV+",
+    "Disney Plus": "Disney+"
+  };
+
+  return map[name] || name;
+}
+  
 function findByTitle(title) {
   const needle = normalizeTitle(title);
   return library.find(x => x.title && normalizeTitle(x.title) === needle);
@@ -1989,11 +2001,11 @@ try {
   const ca = providerData.results?.CA;
 
   if (ca?.flatrate?.length) {
-    platform = ca.flatrate[0].provider_name;
+    platform = normalizePlatform(ca.flatrate[0].provider_name);
   } else if (ca?.ads?.length) {
-    platform = ca.ads[0].provider_name;
+    platform = normalizePlatform(ca.ads[0].provider_name);
   } else if (ca?.rent?.length) {
-    platform = ca.rent[0].provider_name;
+    platform = normalizePlatform(ca.rent[0].provider_name);
   }
 
 } catch (e) {
