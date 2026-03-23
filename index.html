@@ -2121,57 +2121,6 @@ if (pendingDelete) {
     addMsg('assistant', 'Cancelled.');
     return;
   }
-
-  if (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) {
-  const phrase = reply.replace(/^(clear|delete|remove)\s+/, '').trim();
-
-  let items = [...library];
-
-  // status filters
-  if (phrase.includes('watched')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watched');
-  } else if (phrase.includes('watching')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watching');
-  } else if (phrase.includes('abandoned')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'abandoned');
-  } else if (phrase.includes('watchlist')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watchlist');
-  }
-
-  // format filters
-  if (phrase.includes('movie') || phrase.includes('movies')) {
-    items = items.filter(item => item.format?.toLowerCase() === 'movie');
-  } else if (phrase.includes('series') || phrase.includes('show') || phrase.includes('shows')) {
-    items = items.filter(item => {
-      const f = item.format?.toLowerCase();
-      return f === 'series' || f === 'miniseries';
-    });
-  }
-
-  // simple genre filter
-  const genreWords = ['drama', 'sci-fi', 'comedy', 'horror', 'thriller', 'romance', 'mystery', 'crime', 'fantasy', 'documentary'];
-  const matchedGenre = genreWords.find(g => phrase.includes(g));
-  if (matchedGenre) {
-    items = items.filter(item => {
-      const genre = (item.genre || item.primary_genre || '').toLowerCase();
-      const sub = (item.subGenres || item.subgenres || '').toLowerCase();
-      return genre.includes(matchedGenre) || sub.includes(matchedGenre);
-    });
-  }
-
-  if (!items.length) {
-    addMsg('assistant', `❌ No items found for "${phrase}".`);
-    return;
-  }
-
-  pendingClear = {
-    items,
-    label: phrase
-  };
-
-  addMsg('assistant', `⚠️ This will remove ${items.length} item${items.length === 1 ? '' : 's'} from "${phrase}". Confirm? (yes/no)`);
-  return;
-}
   
   // 🤖 AI fallback for unclear replies
 const aiResult = await interpretYesNoAI(reply);
@@ -2367,6 +2316,57 @@ const newItem = {
     return;
   }
 
+  if (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) {
+  const phrase = reply.replace(/^(clear|delete|remove)\s+/, '').trim();
+
+  let items = [...library];
+
+  // status filters
+  if (phrase.includes('watched')) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watched');
+  } else if (phrase.includes('watching')) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watching');
+  } else if (phrase.includes('abandoned')) {
+    items = items.filter(item => item.status?.toLowerCase() === 'abandoned');
+  } else if (phrase.includes('watchlist')) {
+    items = items.filter(item => item.status?.toLowerCase() === 'watchlist');
+  }
+
+  // format filters
+  if (phrase.includes('movie') || phrase.includes('movies')) {
+    items = items.filter(item => item.format?.toLowerCase() === 'movie');
+  } else if (phrase.includes('series') || phrase.includes('show') || phrase.includes('shows')) {
+    items = items.filter(item => {
+      const f = item.format?.toLowerCase();
+      return f === 'series' || f === 'miniseries';
+    });
+  }
+
+  // simple genre filter
+  const genreWords = ['drama', 'sci-fi', 'comedy', 'horror', 'thriller', 'romance', 'mystery', 'crime', 'fantasy', 'documentary'];
+  const matchedGenre = genreWords.find(g => phrase.includes(g));
+  if (matchedGenre) {
+    items = items.filter(item => {
+      const genre = (item.genre || item.primary_genre || '').toLowerCase();
+      const sub = (item.subGenres || item.subgenres || '').toLowerCase();
+      return genre.includes(matchedGenre) || sub.includes(matchedGenre);
+    });
+  }
+
+  if (!items.length) {
+    addMsg('assistant', `❌ No items found for "${phrase}".`);
+    return;
+  }
+
+  pendingClear = {
+    items,
+    label: phrase
+  };
+
+  addMsg('assistant', `⚠️ This will remove ${items.length} item${items.length === 1 ? '' : 's'} from "${phrase}". Confirm? (yes/no)`);
+  return;
+}
+  
 if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
   const title = userText.replace(/^(delete|remove)\s+/i, '').trim();
