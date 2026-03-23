@@ -2393,7 +2393,7 @@ async function callAssistant(messages, API_KEY){
 
 async function getOpenAIKey() {
   try {
-    const res = await fetch("icy-feather-bc92.twalsh.workers.dev");
+    const res = await fetch("https://icy-feather-bc92.twalsh.workers.dev");
     const data = await res.json();
     return data.key || "";
   } catch (e) {
