@@ -2121,6 +2121,27 @@ if (pendingDelete) {
     return;
   }
 
+  // 🤖 AI fallback for unclear replies
+const aiResult = await interpretYesNoAI(reply);
+
+  if (aiResult === "yes") {
+    // same code as your YES block
+    // (copy it exactly, don’t rewrite)
+    const title = pendingDelete.title;
+    library = library.filter(item => item.title !== title);
+    pendingDelete = null;
+    saveLibrary();
+    renderLibrary();
+    addMsg('assistant', `🗑️ Removed "${title}"`);
+    return;
+  }
+
+  if (aiResult === "no") {
+    pendingDelete = null;
+    addMsg('assistant', '❌ Delete cancelled.');
+    return;
+  }
+
   addMsg('assistant', 'Please reply yes or no 🙂');
   return;
 }
