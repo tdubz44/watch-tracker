@@ -2036,8 +2036,11 @@ if (pendingDelete) {
         endpoint = 'tv';
       }
 
+      const key = getTMDbKey();
+      if (!key) return;
+      
       const detailsRes = await fetch(
-        `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${API_KEY}`
+        `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`
       );
       const details = await detailsRes.json();
             console.log("TMDB DETAILS:", details);
