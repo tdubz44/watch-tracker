@@ -1475,6 +1475,43 @@ return tone;
     return "";
   }
 }
+
+async function interpretSelectionAI(reply, results) {
+  try {
+    const API_KEY = getOpenAIKey();
+    if (!API_KEY) return null;
+
+    const options = results.map((r, i) => {
+      const title = r.title || r.name || "";
+      const year = (r.release_date || r.first_air_date || "").split("-")[0];
+      const type = r.media_type || (r.first_air_date ? "tv" : "movie");
+      return `${i + 1}. ${title}${year ? ` (${year})` : ""} [${type}]`;
+    }).join("\n");
+
+    const messages = [
+      {
+        role: "system",
+        content: "Return only the best matching option number as a single digit. If unclear, return 0."
+      },
+      {
+        role: "user",
+        content: `User reply: "${reply}"\n\nOptions:\n${options}`
+      }
+    ];
+
+    const data = await callAssistant(messages, API_KEY);
+    const text = data.choices?.[0]?.message?.content?.trim() || "";
+    const match = text.match(/\b([0-9]|10)\b/);
+    if (!match) return null;
+
+    const choice = parseInt(match[1], 10);
+    return choice > 0 ? choice : null;
+
+  } catch (e) {
+    console.warn("Selection AI failed:", e);
+    return null;
+  }
+}
   
 function findByTitle(title) {
   const needle = normalizeTitle(title);
