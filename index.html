@@ -2380,7 +2380,7 @@ async function callAssistant(messages, API_KEY){
 function getOpenAIKey(){
   let key = localStorage.getItem("openai_api_key");
   if(!key){
-    key = prompt("Enter your OpenAI API key");
+    key = prompt("Enter your OpenAI API key (get one at https://platform.openai.com/api-keys)");
     if(key) localStorage.setItem("openai_api_key", key);
   }
   return key;
