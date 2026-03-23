@@ -2464,6 +2464,32 @@ if (existing) {
     return;
   }
 
+  if (reply.includes('duplicate')) {
+  const counts = {};
+
+  for (const item of library) {
+    const key = (item.title || '').toLowerCase();
+    if (!key) continue;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  const duplicates = Object.entries(counts)
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (!duplicates.length) {
+    addMsg('assistant', 'No duplicate titles found.');
+    return;
+  }
+
+  const list = duplicates
+    .map(([title, count]) => `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}`)
+    .join('\n');
+
+  addMsg('assistant', `Duplicate titles:\n${list}`);
+  return;
+}
+  
     if (
       reply.includes('watched') ||
       reply.includes('watching') ||
@@ -2479,9 +2505,8 @@ if (existing) {
       reply.includes('mystery') ||
       reply.includes('crime') ||
       reply.includes('fantasy') ||
-      reply.includes('documentary') ||
-      reply.includes('duplicate')
-          ) {
+      reply.includes('documentary')
+    ) {
       const items = filterLibraryByReply(reply);
     
       if (!items.length) {
