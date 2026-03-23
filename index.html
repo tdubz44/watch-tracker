@@ -2066,6 +2066,24 @@ if (pendingDelete) {
     }
       const match = reply.match(/\b([1-9]|10)\b/);
       const choice = match ? parseInt(match[1], 10) : NaN;
+
+      // fallback: detect "first", "second", etc.
+      const wordMap = {
+        first: 1,
+        second: 2,
+        third: 3,
+        fourth: 4,
+        fifth: 5
+      };
+      
+      if (isNaN(choice)) {
+        for (const word in wordMap) {
+          if (reply.toLowerCase().includes(word)) {
+            choice = wordMap[word];
+            break;
+          }
+        }
+      }
     
     if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
       const selected = pendingSelection.results[choice - 1];
