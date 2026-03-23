@@ -2055,8 +2055,6 @@ if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
   const title = userText.replace(/^(delete|remove)\s+/i, '').trim();
 
-  const existing = findByTitle(title);
-
 const match = resolveLibraryTitle(title);
 const existing = match.item;
 
