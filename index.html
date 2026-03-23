@@ -1419,8 +1419,14 @@ async function detectToneAI(details, genres = []) {
       if (!API_KEY) return "";
 
     const title = details.name || details.title || "";
+
+        console.log("🎭 Checking tone cache for:", title);
     const cached = getCachedTone(title);
-      if (cached) return cached;
+      if (cached) {
+          console.log("⚡ Using cached tone:", cached);
+        return cached;
+      }
+    
     const overview = details.overview || "";
     const genreText = genres.join(", ");
 
@@ -1675,6 +1681,8 @@ async function fetchTMDbData(title) {
   const url = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(title)}`;
 
   try {
+    console.log("🤖 Calling OpenAI for tone...");
+    
 const res = await fetch(url);
 const data = await res.json();
 
