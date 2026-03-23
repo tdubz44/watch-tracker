@@ -755,6 +755,7 @@ let currentTab = 'assistant';
 let pendingSelection = null;
 let pendingUpdate = null;
 let pendingDuplicate = null;
+let pendingDelete = null;
 
     const API_KEY = 'eedc718be2818766f1c16eafc83fee0a';
 
@@ -1863,6 +1864,32 @@ if (pendingDuplicate) {
   addMsg('assistant', 'Please reply yes or no 🙂');
   return;
 }
+
+if (pendingDelete) {
+
+  if (['yes','y','confirm'].includes(reply)) {
+
+    library = library.filter(item => item !== pendingDelete);
+
+    saveLibrary();
+    refreshSearch();
+    renderWatching();
+
+    addMsg('assistant', `🗑️ Removed "${pendingDelete.title}"`);
+
+    pendingDelete = null;
+    return;
+  }
+
+  if (['no','n','cancel'].includes(reply)) {
+    pendingDelete = null;
+    addMsg('assistant', 'Cancelled.');
+    return;
+  }
+
+  addMsg('assistant', 'Please reply yes or no 🙂');
+  return;
+}
   
   if (pendingSelection && pendingSelection.results) {
     const choice = parseInt(userText.trim(), 10);
@@ -1963,6 +1990,23 @@ const newItem = {
     return;
   }
 
+if (reply.startsWith('delete') || reply.startsWith('remove')) {
+
+  const title = userText.replace(/^(delete|remove)\s+/i, '').trim();
+
+  const existing = findByTitle(title);
+
+  if (!existing) {
+    addMsg('assistant', `❌ "${title}" not found in your library.`);
+    return;
+  }
+
+  pendingDelete = existing;
+
+  addMsg('assistant', `Are you sure you want to remove "${existing.title}"? (yes/no)`);
+  return;
+}
+  
   if (reply.startsWith('add')) {
     const cleanTitle = userText.replace(/^add\s+/i, '').trim();
 
