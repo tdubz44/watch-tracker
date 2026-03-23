@@ -2131,7 +2131,9 @@ const aiResult = await interpretYesNoAI(reply);
     library = library.filter(item => item.title !== title);
     pendingDelete = null;
     saveLibrary();
-    renderLibrary();
+    updateStats();
+    refreshSearch();
+    renderWatching();
     addMsg('assistant', `🗑️ Removed "${title}"`);
     return;
   }
