@@ -2010,9 +2010,25 @@ try {
           : "Series";
       }
 
+      // GENRE LOGIC HERE
       const genres = (details.genres?.map(g => g.name) || []);
-      const primaryGenre = genres[0] || "";
-      const subGenres = genres.slice(1).join(', ');
+
+          // 🎯 Normalize names
+          const normalizedGenres = genres.map(g =>
+            g === "Science Fiction" || g === "Sci-Fi & Fantasy" ? "Sci-Fi" : g
+          );
+          
+          // 🎯 Force Sci-Fi to be primary if present
+          let primaryGenre = normalizedGenres[0] || "";
+          
+          if (normalizedGenres.includes("Sci-Fi")) {
+            primaryGenre = "Sci-Fi";
+          }
+          
+          // 🎯 Remove primary from subgenres
+          const subGenres = normalizedGenres
+            .filter(g => g !== primaryGenre)
+            .join(', ');
 
       const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
       const runtime = endpoint === 'movie' ? details.runtime : '';
