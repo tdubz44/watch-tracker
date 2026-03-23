@@ -757,8 +757,8 @@ let pendingUpdate = null;
 let pendingDuplicate = null;
 let pendingDelete = null;
 
-    const API_KEY = 'eedc718be2818766f1c16eafc83fee0a';
-
+let api_key = localStorage.getItem("tmdb_api_key") || "";
+  
 // ============================================================
 // STORAGE HELPERS
 // ============================================================
@@ -2402,6 +2402,15 @@ function getOpenAIKey(){
   if(!key){
     key = prompt("Enter your OpenAI API key (get one at https://platform.openai.com/api-keys)");
     if(key) localStorage.setItem("openai_api_key", key);
+  }
+  return key;
+}
+
+function getTMDbKey(){
+  let key = localStorage.getItem("tmdb_api_key");
+  if(!key){
+    key = prompt("Enter your TMDb API key (get one at https://www.themoviedb.org/settings/api)");
+    if(key) localStorage.setItem("tmdb_api_key", key);
   }
   return key;
 }
