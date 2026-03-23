@@ -1512,6 +1512,35 @@ async function interpretSelectionAI(reply, results) {
     return null;
   }
 }
+
+async function interpretYesNoAI(reply) {
+  try {
+    const API_KEY = getOpenAIKey();
+    if (!API_KEY) return null;
+
+    const messages = [
+      {
+        role: "system",
+        content: 'Return only one word: "yes", "no", or "unknown".'
+      },
+      {
+        role: "user",
+        content: `Interpret this reply: "${reply}"`
+      }
+    ];
+
+    const data = await callAssistant(messages, API_KEY);
+    const text = data.choices?.[0]?.message?.content?.trim().toLowerCase() || "";
+
+    if (text.includes("yes")) return "yes";
+    if (text.includes("no")) return "no";
+    return null;
+
+  } catch (e) {
+    console.warn("Yes/No AI failed:", e);
+    return null;
+  }
+}
   
 function findByTitle(title) {
   const needle = normalizeTitle(title);
