@@ -2083,6 +2083,7 @@ try {
             .filter(g => g !== primaryGenre)
             .join(', ');
 
+      const tone = await detectToneAI(details, normalizedGenres);
       const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
       const runtime = endpoint === 'movie' ? details.runtime : '';
 
