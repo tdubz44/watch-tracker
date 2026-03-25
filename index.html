@@ -2097,19 +2097,27 @@ async function sendMessage(userText) {
   - Platform should be a likely streaming/home platform guess in Canada.
   - If unsure, use empty string.
   `;
-  
-      const raw = await callAI(prompt); // replace if your AI function has a different name
-      const parsed = JSON.parse(raw);
-  
-      return {
-        tone: parsed?.tone || '',
-        platform: parsed?.platform || ''
-      };
-    } catch (err) {
-      console.error('inferMissingMetadataAI error:', err);
-      return { tone: '', platform: '' };
+
+  try { 
+      const raw = await callAssistant(prompt);
+
+    let parsed;
+
+    try {
+       parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch {
+        console.warn('AI returned non-JSON:', raw);
+        return {};
     }
-  }  
+  
+    return {
+      tone: parsed?.tone || '',
+      platform: parsed?.platform || ''
+    };
+  } catch (err) {
+    console.error('inferMissingMetadataAI error:', err);
+    return { tone: '', platform: '' };
+    } 
 
 // ============================================================
 // MERGE HELPER
