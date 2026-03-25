@@ -2582,8 +2582,28 @@ const newItem = {
       
       if (!first) continue;
   
-      if (!item.platform && first.platform) item.platform = first.platform;
-      if (!item.tone && first.tone) item.tone = first.tone;
+      if (!item.year && (first?.first_air_date || first?.release_date)) {
+        item.year = (first.first_air_date || first.release_date).slice(0, 4);
+      }
+      
+      if (!item.genre && first?.genre_ids?.length) {
+        item.genre = mapGenreId(first.genre_ids[0]);
+      }
+      
+      if (!item.subgenres && first?.genre_ids?.length > 1) {
+        item.subgenres = first.genre_ids
+          .slice(1)
+          .map(mapGenreId)
+          .filter(Boolean)
+          .join(', ');
+      }
+
+      if (!item.tone || !item.platform) {
+  const aiMeta = await inferMissingMetadataAI(item, first);
+
+  if (!item.tone && aiMeta?.tone) item.tone = aiMeta.tone;
+  if (!item.platform && aiMeta?.platform) item.platform = aiMeta.platform;
+}
     }
   
     saveLibrary();
