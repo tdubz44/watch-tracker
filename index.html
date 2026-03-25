@@ -1489,7 +1489,11 @@ return tone;
       const title = item?.title || '';
       const format = item?.format || '';
       const genre = item?.genre || '';
-      const year = item?.year || first?.first_air_date?.slice(0, 4) || first?.release_date?.slice(0, 4) || '';
+      const year =
+        item?.year ||
+        first?.first_air_date?.slice(0, 4) ||
+        first?.release_date?.slice(0, 4) ||
+        '';
       const status = item?.status || '';
   
       const prompt = `
@@ -1514,28 +1518,41 @@ return tone;
   - Platform should be a likely streaming/home platform guess in Canada.
   - If unsure, use empty string.
   `;
-
-  try { 
-      const raw = await callAssistant(prompt);
-
-    let parsed;
-
-    try {
-       parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch {
-        console.warn('AI returned non-JSON:', raw);
-        return {};
-    }
   
-    return {
-      tone: parsed?.tone || '',
-      platform: parsed?.platform || ''
-    };
-  } catch (err) {
-    console.error('inferMissingMetadataAI error:', err);
-    return { tone: '', platform: '' };
-    } 
-}
+      const API_KEY = getOpenAIKey();
+      if (!API_KEY) return { tone: '', platform: '' };
+  
+      const messages = [
+        {
+          role: "system",
+          content: "Return only valid JSON with keys tone and platform."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ];
+  
+      const data = await callAssistant(messages, API_KEY);
+      const raw = data?.choices?.[0]?.message?.content?.trim() || '';
+  
+      let parsed;
+      try {
+        parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch {
+        console.warn('AI returned non-JSON:', raw);
+        return { tone: '', platform: '' };
+      }
+  
+      return {
+        tone: parsed?.tone || '',
+        platform: parsed?.platform || ''
+      };
+    } catch (err) {
+      console.error('inferMissingMetadataAI error:', err);
+      return { tone: '', platform: '' };
+    }
+  }
   
 async function interpretSelectionAI(reply, results) {
   try {
