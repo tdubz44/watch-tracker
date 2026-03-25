@@ -759,6 +759,7 @@ let pendingMergeDuplicates = false;
 let pendingDelete = null;
 let pendingClear = null;
 let pendingMetadataUpdate = null;
+let pendingMissingFieldsReview = false;
 
 let api_key = localStorage.getItem("tmdb_api_key") || "";
   
@@ -2500,6 +2501,7 @@ if (
     ).join('\n');
   }
 
+  pendingMissingFieldsReview = true;
   addMsg('assistant', msg.trim());
   return;
 }
@@ -2508,12 +2510,15 @@ if (
 // UPDATE FIELDS HANDLER
 // ============================================================    
 if (
-  reply.includes('update') &&
+  (pendingMissingFieldsReview && (reply === 'update' || reply === 'fix' || reply === 'fill')) ||
   (
-    reply.includes('empty') ||
-    reply.includes('missing') ||
-    reply.includes('metadata') ||
-    reply.includes('those')
+    reply.includes('update') &&
+    (
+      reply.includes('empty') ||
+      reply.includes('missing') ||
+      reply.includes('metadata') ||
+      reply.includes('those')
+    )
   )
 ) {
   addMsg('assistant', '🔄 Updating missing fields using metadata...');
@@ -2541,6 +2546,7 @@ if (
   refreshSearch();
   renderWatching();
 
+  pendingMissingFieldsReview = false;
   addMsg('assistant', '✅ Done! Missing fields updated where possible.');
   return;
 }
