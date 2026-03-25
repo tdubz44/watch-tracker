@@ -2386,8 +2386,19 @@ const newItem = {
         .sort((a, b) => b[1] - a[1]);
       
       const list = duplicates
-        .map(([title, count]) => `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}`)
-        .join('\n');
+          .map(([title, count]) => {
+            const matching = library.filter(item =>
+              (item.title || '').toLowerCase() === title
+            );
+          
+            const formats = [...new Set(matching.map(i => i.format).filter(Boolean))];
+            const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
+          
+            return `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}
+                Format: ${formats.join(', ') || 'Unknown'}
+                Status: ${statuses.join(', ') || 'Unknown'}`;
+          })
+          .join('\n');
       
       pendingMergeDuplicates = true;
       addMsg(
