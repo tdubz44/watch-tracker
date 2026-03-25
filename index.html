@@ -2097,20 +2097,41 @@ function getMetadataScore(item) {
 // ============================================================
 if (pendingMergeDuplicates) {
   if (isAffirmative(reply) || reply.startsWith('merge') || reply.startsWith('clean')) {
-    // merge duplicates (keep first instance of each title)
-    const seen = new Set();
-    const before = library.length;
-    
-    library = library.filter(item => {
+    // merge duplicates (best entry)
+    const grouped = new Map();
+
+    for (const item of library) {
       const key = (item.title || '').toLowerCase();
-      if (!key) return true;
+      if (!key) continue;
     
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    }
     
-    const removed = before - library.length;
+    const mergedLibrary = [];
+    let removed = 0;
+    
+    for (const [, items] of grouped) {
+      if (items.length === 1) {
+        mergedLibrary.push(items[0]);
+        continue;
+      }
+    
+      const sorted = [...items].sort((a, b) => {
+        const statusDiff = getStatusRank(b.status) - getStatusRank(a.status);
+        if (statusDiff !== 0) return statusDiff;
+    
+        const metaDiff = getMetadataScore(b) - getMetadataScore(a);
+        if (metaDiff !== 0) return metaDiff;
+    
+        return 0;
+      });
+    
+      mergedLibrary.push(sorted[0]);
+      removed += items.length - 1;
+    }
+    
+    library = mergedLibrary;
     
     saveLibrary();
     updateStats();
