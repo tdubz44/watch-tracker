@@ -2092,7 +2092,7 @@ if (pendingDuplicate) {
 
   if (isNegative(reply)) {
     pendingDuplicate = null;
-    addMsg('assistant', '👍 Okay, not adding.');
+    addMsg('assistant', '👍 Okay, not merging titles.');
     return;
   }
 
@@ -2317,8 +2317,27 @@ const newItem = {
   }
 
   if (reply.includes('duplicate') && (reply.startsWith('delete ') || reply.startsWith('remove ') || reply.startsWith('merge '))) {
-    pendingDuplicate = true;
-    addMsg('assistant', 'I found duplicate titles. Do you want me to merge duplicates by keeping one copy of each title? (yes/no)');
+      const counts = {};
+      
+      for (const item of library) {
+        const key = (item.title || '').toLowerCase();
+        if (!key) continue;
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      
+      const duplicates = Object.entries(counts)
+        .filter(([, count]) => count > 1)
+        .sort((a, b) => b[1] - a[1]);
+      
+      const list = duplicates
+        .map(([title, count]) => `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}`)
+        .join('\n');
+      
+      pendingDuplicate = true;
+      addMsg(
+        'assistant',
+        `I found duplicate titles:\n${list}\n\nDo you want me to merge duplicates by keeping one copy of each title? (yes/no)`
+      );
     return;
   }
   
