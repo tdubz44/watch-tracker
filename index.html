@@ -2627,17 +2627,19 @@ const newItem = {
 // UPDATE FIELDS HANDLER
 // ============================================================    
   if (
-    (pendingMissingFieldsReview && (reply === 'update' || reply === 'fix' || reply === 'fill')) ||
+    pendingMissingFieldsReview &&
     (
-      reply.includes('update') &&
-      (
-        reply.includes('empty') ||
-        reply.includes('missing') ||
-        reply.includes('metadata') ||
-        reply.includes('those')
-      )
+      reply.includes('update') ||
+      reply.includes('fix') ||
+      reply.includes('fill') ||
+      reply.includes('those') ||
+      reply.includes('them') ||
+      reply.includes('missing') ||
+      reply.includes('empty') ||
+      reply.includes('metadata')
     )
   ) {
+    
     addMsg('assistant', '🔄 Updating missing fields using metadata...');
   
     const itemsToUpdate = library.filter(item =>
