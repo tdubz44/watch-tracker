@@ -2393,7 +2393,7 @@ const newItem = {
           
             const formats = [...new Set(matching.map(i => i.format).filter(Boolean))];
             const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
-            const years = [...new Set(matching.map(i => i.status).filter(Boolean))];
+            const years = [...new Set(matching.map(i => i.year).filter(Boolean))];
           
             return `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}
                 Format: ${formats.join(', ') || 'Unknown'}
