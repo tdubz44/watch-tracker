@@ -2275,6 +2275,50 @@ const aiResult = await interpretYesNoAI(reply);
         }
       }
 
+// ============================================================
+// SHOW MISSING FIELDS HANDLER
+// ============================================================
+if (
+  reply.includes('empty') ||
+  reply.includes('missing')
+) {
+  const missingPlatformAndTone = library.filter(item =>
+    !item.platform && !item.tone
+  );
+
+  const missingToneOnly = library.filter(item =>
+    item.platform && !item.tone
+  );
+
+  if (!missingPlatformAndTone.length && !missingToneOnly.length) {
+    addMsg('assistant', '✨ No missing platform or tone found.');
+    return;
+  }
+
+  let msg = '';
+
+  if (missingPlatformAndTone.length) {
+    msg += 'Missing platform + tone:\n';
+    msg += missingPlatformAndTone.map(i =>
+      `- ${i.title} (${i.format}, ${i.status})`
+    ).join('\n');
+    msg += '\n\n';
+  }
+
+  if (missingToneOnly.length) {
+    msg += 'Missing tone:\n';
+    msg += missingToneOnly.map(i =>
+      `- ${i.title} (${i.format}, ${i.status})`
+    ).join('\n');
+  }
+
+  addMsg('assistant', msg.trim());
+  return;
+}
+
+// ============================================================
+// UPDATE FIELDS HANDLER
+// ============================================================    
 if (
   reply.includes('update') &&
   (
