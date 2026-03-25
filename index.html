@@ -2062,6 +2062,37 @@ async function sendMessage(userText) {
   }
 
 // ============================================================
+// MERGE HELPER
+// ============================================================
+function getStatusRank(status) {
+  const s = (status || '').toLowerCase();
+
+  if (s === 'watched') return 4;
+  if (s === 'watching') return 3;
+  if (s === 'abandoned') return 2;
+  if (s === 'watchlist') return 1;
+
+  return 0;
+}
+
+function getMetadataScore(item) {
+  let score = 0;
+
+  if (item.format) score++;
+  if (item.genre) score++;
+  if (item.subGenres || item.subgenres) score++;
+  if (item.tone) score++;
+  if (item.platform) score++;
+  if (item.lifecycle) score++;
+  if (item.year) score++;
+  if (item.runtime) score++;
+  if (item.seasons) score++;
+  if (item.imdbId) score++;
+
+  return score;
+}
+  
+// ============================================================
 // MERGE HANDLER
 // ============================================================
 if (pendingMergeDuplicates) {
