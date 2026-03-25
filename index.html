@@ -2397,7 +2397,10 @@ const newItem = {
     return;
   }
   
-  if (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) {
+  if (
+    (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) && !reply.includes('duplicate')
+  ) {
+    
   const phrase = reply.replace(/^(clear|delete|remove)\s+/, '').trim();
 
   let items = [...library];
