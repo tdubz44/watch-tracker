@@ -2064,6 +2064,54 @@ async function sendMessage(userText) {
   }
 
 // ============================================================
+// INFER ISSING METADATA AI HELPER
+// ============================================================
+  async function inferMissingMetadataAI(item, first) {
+    try {
+      const overview = first?.overview || '';
+      const title = item?.title || '';
+      const format = item?.format || '';
+      const genre = item?.genre || '';
+      const year = item?.year || first?.first_air_date?.slice(0, 4) || first?.release_date?.slice(0, 4) || '';
+      const status = item?.status || '';
+  
+      const prompt = `
+  You are filling missing metadata for a personal watchlist entry.
+  
+  Title: ${title}
+  Format: ${format}
+  Genre: ${genre}
+  Year: ${year}
+  Status: ${status}
+  Overview: ${overview}
+  
+  The user is in Canada and wants platform suggestions relevant to Canada.
+  Return ONLY valid JSON in this shape:
+  {
+    "tone": "comma-separated tones or empty string",
+    "platform": "best platform guess in Canada or empty string"
+  }
+  
+  Rules:
+  - Keep tone concise and descriptive.
+  - Platform should be a likely streaming/home platform guess in Canada.
+  - If unsure, use empty string.
+  `;
+  
+      const raw = await callAI(prompt); // replace if your AI function has a different name
+      const parsed = JSON.parse(raw);
+  
+      return {
+        tone: parsed?.tone || '',
+        platform: parsed?.platform || ''
+      };
+    } catch (err) {
+      console.error('inferMissingMetadataAI error:', err);
+      return { tone: '', platform: '' };
+    }
+  }  
+
+// ============================================================
 // MERGE HELPER
 // ============================================================
 function getStatusRank(status) {
@@ -2548,7 +2596,7 @@ const newItem = {
     addMsg('assistant', msg.trim());
     return;
   }
-
+  
 // ============================================================
 // UPDATE FIELDS HANDLER
 // ============================================================    
@@ -2599,11 +2647,11 @@ const newItem = {
       }
 
       if (!item.tone || !item.platform) {
-  const aiMeta = await inferMissingMetadataAI(item, first);
-
-  if (!item.tone && aiMeta?.tone) item.tone = aiMeta.tone;
-  if (!item.platform && aiMeta?.platform) item.platform = aiMeta.platform;
-}
+          const aiMeta = await inferMissingMetadataAI(item, first);
+        
+          if (!item.tone && aiMeta?.tone) item.tone = aiMeta.tone;
+          if (!item.platform && aiMeta?.platform) item.platform = aiMeta.platform;
+        }
     }
   
     saveLibrary();
