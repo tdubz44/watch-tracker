@@ -2274,88 +2274,6 @@ const aiResult = await interpretYesNoAI(reply);
           }
         }
       }
-
-// ============================================================
-// SHOW MISSING FIELDS HANDLER
-// ============================================================
-if (
-  reply.includes('empty') ||
-  reply.includes('missing')
-) {
-  const missingPlatformAndTone = library.filter(item =>
-    !item.platform && !item.tone
-  );
-
-  const missingToneOnly = library.filter(item =>
-    item.platform && !item.tone
-  );
-
-  if (!missingPlatformAndTone.length && !missingToneOnly.length) {
-    addMsg('assistant', '✨ No missing platform or tone found.');
-    return;
-  }
-
-  let msg = '';
-
-  if (missingPlatformAndTone.length) {
-    msg += 'Missing platform + tone:\n';
-    msg += missingPlatformAndTone.map(i =>
-      `- ${i.title} (${i.format}, ${i.status})`
-    ).join('\n');
-    msg += '\n\n';
-  }
-
-  if (missingToneOnly.length) {
-    msg += 'Missing tone:\n';
-    msg += missingToneOnly.map(i =>
-      `- ${i.title} (${i.format}, ${i.status})`
-    ).join('\n');
-  }
-
-  addMsg('assistant', msg.trim());
-  return;
-}
-
-// ============================================================
-// UPDATE FIELDS HANDLER
-// ============================================================    
-if (
-  reply.includes('update') &&
-  (
-    reply.includes('empty') ||
-    reply.includes('missing') ||
-    reply.includes('metadata') ||
-    reply.includes('those')
-  )
-) {
-  addMsg('assistant', '🔄 Updating missing fields using metadata...');
-
-  const itemsToUpdate = library.filter(item =>
-    !item.platform || !item.tone
-  );
-
-  if (!itemsToUpdate.length) {
-    addMsg('assistant', '✨ No titles with missing platform or tone found.');
-    return;
-  }
-
-  for (const item of itemsToUpdate) {
-    const details = await fetchTMDbData(item.title);
-    const first = details?.results?.[0];
-    if (!first) continue;
-
-    if (!item.platform && first.platform) item.platform = first.platform;
-    if (!item.tone && first.tone) item.tone = first.tone;
-  }
-
-  saveLibrary();
-  updateStats();
-  refreshSearch();
-  renderWatching();
-
-  addMsg('assistant', '✅ Done! Missing fields updated where possible.');
-  return;
-}
     
     // 🤖 AI fallback if no valid number detected
 if (isNaN(choice)) {
@@ -2544,6 +2462,88 @@ const newItem = {
       );
     return;
   }
+
+// ============================================================
+// SHOW MISSING FIELDS HANDLER
+// ============================================================
+if (
+  reply.includes('empty') ||
+  reply.includes('missing')
+) {
+  const missingPlatformAndTone = library.filter(item =>
+    !item.platform && !item.tone
+  );
+
+  const missingToneOnly = library.filter(item =>
+    item.platform && !item.tone
+  );
+
+  if (!missingPlatformAndTone.length && !missingToneOnly.length) {
+    addMsg('assistant', '✨ No missing platform or tone found.');
+    return;
+  }
+
+  let msg = '';
+
+  if (missingPlatformAndTone.length) {
+    msg += 'Missing platform + tone:\n';
+    msg += missingPlatformAndTone.map(i =>
+      `- ${i.title} (${i.format}, ${i.status})`
+    ).join('\n');
+    msg += '\n\n';
+  }
+
+  if (missingToneOnly.length) {
+    msg += 'Missing tone:\n';
+    msg += missingToneOnly.map(i =>
+      `- ${i.title} (${i.format}, ${i.status})`
+    ).join('\n');
+  }
+
+  addMsg('assistant', msg.trim());
+  return;
+}
+
+// ============================================================
+// UPDATE FIELDS HANDLER
+// ============================================================    
+if (
+  reply.includes('update') &&
+  (
+    reply.includes('empty') ||
+    reply.includes('missing') ||
+    reply.includes('metadata') ||
+    reply.includes('those')
+  )
+) {
+  addMsg('assistant', '🔄 Updating missing fields using metadata...');
+
+  const itemsToUpdate = library.filter(item =>
+    !item.platform || !item.tone
+  );
+
+  if (!itemsToUpdate.length) {
+    addMsg('assistant', '✨ No titles with missing platform or tone found.');
+    return;
+  }
+
+  for (const item of itemsToUpdate) {
+    const details = await fetchTMDbData(item.title);
+    const first = details?.results?.[0];
+    if (!first) continue;
+
+    if (!item.platform && first.platform) item.platform = first.platform;
+    if (!item.tone && first.tone) item.tone = first.tone;
+  }
+
+  saveLibrary();
+  updateStats();
+  refreshSearch();
+  renderWatching();
+
+  addMsg('assistant', '✅ Done! Missing fields updated where possible.');
+  return;
+}
   
   if (
     (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) && !reply.includes('duplicate')
