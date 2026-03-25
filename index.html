@@ -2065,7 +2065,7 @@ async function sendMessage(userText) {
 // MERGE HANDLER
 // ============================================================
 if (pendingMergeDuplicates) {
-  if (isAffirmative(reply) || reply.startsWith('merge')) || reply.startsWith('clean')) {
+  if (isAffirmative(reply) || reply.startsWith('merge') || reply.startsWith('clean')) {
     // merge duplicates (keep first instance of each title)
     const seen = new Set();
     const before = library.length;
