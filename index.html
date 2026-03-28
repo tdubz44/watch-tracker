@@ -2295,6 +2295,7 @@ if (existing) {
   
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
+      ...convoHistory.slice(-12),
       { role: "user", content: userMsgWithContext }
     ];
   
@@ -2302,9 +2303,16 @@ if (existing) {
   
     removeTyping();
   
-    const reply = data.choices?.[0]?.message?.content?.trim() || "Hmm… I couldn't think of a response.";
-  
-    addMsg("ai", reply);
+    const aiReply = data.choices?.[0]?.message?.content?.trim() || "Hmm… I couldn't think of a response.";
+
+    // Save exchange to conversation history
+    convoHistory.push({ role: "user", content: userText });
+    convoHistory.push({ role: "assistant", content: aiReply });
+    saveConvo();
+
+    // Auto-apply any JSON updates the AI included
+    const jsonResult = parseAndApplyJSON(aiReply);
+    addMsg("ai", aiReply, jsonResult);
   
   } catch (e) {
     removeTyping();
@@ -2488,20 +2496,4 @@ function getCachedTone(title) {
 }
 
 function setCachedTone(title, tone) {
-  if (!tone) return;
-  localStorage.setItem(getToneCacheKey(title), tone);
-}
-  
-</script>
-
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(() => console.log("Service Worker registered"))
-    .catch(err => console.warn("Service worker failed", err));
-}
-</script>
-
-</body>
-</html>
+  if (!t
