@@ -2496,4 +2496,20 @@ function getCachedTone(title) {
 }
 
 function setCachedTone(title, tone) {
-  if (!t
+  if (!tone) return;
+  localStorage.setItem(getToneCacheKey(title), tone);
+}
+  
+</script>
+
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(() => console.log("Service Worker registered"))
+    .catch(err => console.warn("Service worker failed", err));
+}
+</script>
+
+</body>
+</html>
