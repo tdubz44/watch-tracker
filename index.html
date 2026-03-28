@@ -1897,11 +1897,12 @@ function addMsg(role, text, jsonApplied) {
   const div = document.createElement('div');
   div.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
   const avatar = role === 'user' ? '🎬' : '🤖';
-  const displayText = text
+  const rawDisplay = text
     .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // strip raw JSON block from display
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .trim();
+  const displayText = rawDisplay || (jsonApplied ? '✅ Applied.' : '…');
   div.innerHTML = `
     <div class="msg-avatar">${avatar}</div>
     <div class="msg-bubble">${displayText.replace(/\n/g,'<br>')}${jsonApplied ? `<div class="json-msg">✔ JSON applied</div>` : ''}</div>
