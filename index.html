@@ -1819,10 +1819,10 @@ RULES:
 - Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
 - When suggesting adding or updating items:
-  1. FIRST show details in plain text (no JSON)
-  2. Ask for confirmation
-  3. ONLY include <<<JSON>>> after the user clearly confirms
-  4. Never include JSON in the first suggestion message
+  1. Show the proposed field values in plain text
+  2. Include the <<<JSON>>> block in the SAME message
+  3. End with "Confirm add?" or "Confirm update?" on the last line
+  4. The app will hold the JSON and only apply it after the user says yes
 
 - Use EXACT field names when generating JSON:
   title, format, status, platform, genre, tone, lifecycle, subgenres, year
