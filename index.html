@@ -757,6 +757,7 @@ let pendingUpdate = null;
 let pendingDuplicate = null;
 let pendingDelete = null;
 let pendingAutofill = null;      // B1: autofill diff/conflict state
+let pendingAIConfirmation = false; // tracks when AI asked "Confirm?" but user hasn't responded yet
 let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
 
 let api_key = localStorage.getItem("tmdb_api_key") || "";
@@ -1876,11 +1877,18 @@ JSON>>>
 
 If no data changes are needed, do NOT output a JSON block.
 
+CONFIRMATION RULE (CRITICAL):
+- If your response contains "Confirm add?", "Confirm update?", or any confirmation prompt, that message MUST NOT contain a <<<JSON>>> block.
+- Wait for the user to say yes/y/ok FIRST, then in your NEXT message output the <<<JSON>>> block.
+- Never include JSON and a confirmation prompt in the same message.
+
 CORRECTION HANDLING:
 - If the user says "incorrect", "wrong", "that's not right", "undo", "revert", or similar after an update:
   - DO NOT ask "which title and field?" — use conversation context to know what was just changed
-  - Offer to verify via TMDb OR ask for the correct value: e.g. "Should I recheck TMDb to verify the lifecycle for Resident Alien?" or "Apologies — what should the lifecycle be set to?"
-  - Keep it to one short question, not a paragraph
+  - Ask for the correct value: e.g. "Apologies — what should the lifecycle be set to?" OR offer TMDb verification
+  - If offering TMDb verification ("Should I recheck TMDb?") and user says yes: DO NOT apply any data yourself. Tell the user: "Please type \`autofill [title]\` to fetch fresh data directly from TMDb."
+  - NEVER make up or assume TMDb data — you cannot actually query TMDb
+  - Keep it to one short response, not a paragraph
 
 `;
   
@@ -2031,7 +2039,7 @@ async function sendMessage(userText) {
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
 
   // A1: Clear stale pending states when user starts a new unrelated command
-  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill;
+  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation;
   if (hasPendingState) {
     const isContinuation = /^(yes|y|ok|okay|confirm|no|n|cancel|add|search|update|[1-5])$/.test(reply);
     if (!isContinuation) {
@@ -2040,6 +2048,7 @@ async function sendMessage(userText) {
       pendingDelete = null;
       pendingUpdate = null;
       pendingAutofill = null;
+      pendingAIConfirmation = false;
       console.log("A1: Cleared stale pending states — new command detected");
     }
   }
@@ -2557,6 +2566,20 @@ if (existing) {
   }
 
     // 🧠 Fallback to AI if no command matched
+  // pendingAIConfirmation: inject override so AI outputs JSON immediately
+  let confirmOverride = '';
+  if (pendingAIConfirmation) {
+    if (['no','n','cancel'].includes(reply)) {
+      pendingAIConfirmation = false;
+      addMsg('assistant', '\u274c Cancelled.');
+      return;
+    }
+    if (['yes','y','ok','okay','confirm'].includes(reply)) {
+      confirmOverride = '\n[SYSTEM NOTE: The user has confirmed. Output the <<<JSON>>> block NOW to apply the change. Do NOT repeat the summary. Do NOT ask for confirmation again.]\n';
+      pendingAIConfirmation = false;
+    }
+  }
+
   try {
     const API_KEY = getOpenAIKey();
     if (!API_KEY) return;
@@ -2567,7 +2590,7 @@ if (existing) {
     const contextNote = lastDiscussedTitle
       ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
       : '';
-    const userMsgWithContext = `${libraryContext}${contextNote}\n\n---\nUSER MESSAGE:\n${userText}`;
+    const userMsgWithContext = `${libraryContext}${contextNote}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
   
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
@@ -2588,6 +2611,12 @@ if (existing) {
 
     // Auto-apply any JSON updates the AI included
     const jsonResult = parseAndApplyJSON(aiReply);
+    // Detect if AI asked for confirmation without including JSON — set pending flag
+    if (!jsonResult && /confirm (add|update|change|it)\??/i.test(aiReply)) {
+      pendingAIConfirmation = true;
+    } else {
+      pendingAIConfirmation = false;
+    }
     addMsg("ai", aiReply, jsonResult);
   
   } catch (e) {
