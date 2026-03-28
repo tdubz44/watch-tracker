@@ -2299,7 +2299,12 @@ const newItem = {
     return;
   }
 
-if (reply.startsWith('delete') || reply.startsWith('remove')) {
+// Guard: don't treat known non-title keywords as delete targets — fall through to AI
+const NON_TITLE_REMOVE = ['duplicates','duplicate','all','everything','library','all titles'];
+const afterRemove = userText.replace(/^(delete|remove)\s+/i, '').trim().toLowerCase();
+if (NON_TITLE_REMOVE.some(k => afterRemove === k)) {
+  // Fall through to AI (handles "remove duplicates", "remove all", etc. conversationally)
+} else if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
   // Strip year hint from delete query (e.g. "delete invasion 2005" → title="invasion", yearHint="2005")
   const rawDeleteTitle = userText.replace(/^(delete|remove)\s+/i, '').trim();
