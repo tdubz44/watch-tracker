@@ -2231,11 +2231,13 @@ addMsg('assistant', display);
   return;
 }
   
-  if (reply.startsWith('add')) {
+  const FIELD_NAMES = ['subgenres','subgenre','genre','platform','tone','status','format','lifecycle','progress','year','notes','seasons','runtime','imdb'];
+  const afterAdd = reply.replace(/^add\s+/i, '').trim();
+  if (reply.startsWith('add') && !FIELD_NAMES.some(f => afterAdd.startsWith(f))) {
     console.log("ADD BLOCK HIT");
     
     const cleanTitle = userText.replace(/^add\s+/i, '').trim();
-      console.log("CLEAN TITLE:", cleanTitle);
+    console.log("CLEAN TITLE:", cleanTitle);
 
 const existing = findByTitle(cleanTitle);
     console.log("EXISTING MATCH:", existing);
