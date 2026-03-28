@@ -2567,16 +2567,24 @@ if (existing) {
   }
 
     // 🧠 Fallback to AI if no command matched
-  // pendingAIConfirmation: inject override so AI outputs JSON immediately
+  // pendingAIConfirmation handler
   let confirmOverride = '';
   if (pendingAIConfirmation) {
     if (['no','n','cancel'].includes(reply)) {
       pendingAIConfirmation = false;
-      addMsg('assistant', '\u274c Cancelled.');
+      addMsg('assistant', '\u274c No changes made.');
       return;
     }
     if (['yes','y','ok','okay','confirm'].includes(reply)) {
-      confirmOverride = '\n[SYSTEM NOTE: The user has confirmed. Output the <<<JSON>>> block NOW to apply the change. Do NOT repeat the summary. Do NOT ask for confirmation again.]\n';
+      if (pendingAIConfirmation.deferred_text) {
+        // Apply the stored JSON directly — no second API call needed
+        const result = parseAndApplyJSON(pendingAIConfirmation.deferred_text);
+        pendingAIConfirmation = false;
+        addMsg('assistant', result ? `\u2705 Applied.` : '\u2705 Done.', !!result);
+        return;
+      }
+      // Fallback: no stored JSON, inject override for second AI call
+      confirmOverride = '\n[SYSTEM NOTE: User confirmed. Output <<<JSON>>> NOW to apply the change. No summary, no confirmation prompt.]\n';
       pendingAIConfirmation = false;
     }
   }
@@ -2610,12 +2618,20 @@ if (existing) {
     convoHistory.push({ role: "assistant", content: aiReply });
     saveConvo();
 
-    // Auto-apply any JSON updates the AI included
-    const jsonResult = parseAndApplyJSON(aiReply);
-    // Detect if AI asked for confirmation without including JSON — set pending flag
-    if (!jsonResult && /confirm (add|update|change|it)\??/i.test(aiReply)) {
+    // Apply JSON — but defer if AI asks for confirmation in same message
+    const aiStripped = aiReply.replace(/<<<JSON[\s\S]*?JSON>>>/g, '').trim();
+    const aiAsksConfirm = /confirm (add|update|change|it)\??/i.test(aiStripped);
+    const hasJSON = /<<<JSON[\s\S]*?JSON>>>/.test(aiReply);
+
+    let jsonResult = null;
+    if (hasJSON && aiAsksConfirm) {
+      // Store JSON for user to confirm — don't apply yet
+      pendingAIConfirmation = { deferred_text: aiReply };
+    } else if (!hasJSON && aiAsksConfirm) {
+      // AI asked confirm but gave no JSON — will need second API call
       pendingAIConfirmation = true;
     } else {
+      jsonResult = parseAndApplyJSON(aiReply);
       pendingAIConfirmation = false;
     }
     addMsg("ai", aiReply, jsonResult);
