@@ -2230,6 +2230,36 @@ display += `\n\n(yes/no)`;
 addMsg('assistant', display);
   return;
 }
+
+// ============================================================
+// CHECK / SHOW / LOOKUP HANDLER — reads from library, no AI needed
+// ============================================================
+if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith('lookup ')) {
+  const checkTitle = userText.replace(/^(check|show|lookup)\s+/i, '').trim();
+  const match = resolveLibraryTitle(checkTitle);
+  if (!match.item) {
+    addMsg('assistant', `❌ "${checkTitle}" not found in your library.`);
+    return;
+  }
+  const item = match.item;
+  let display = match.fuzzy ? `Closest match for "${checkTitle}":\n\n` : '';
+  display += `Title: ${item.title}`;
+  if (item.format)        display += `\nFormat: ${item.format}`;
+  if (item.status)        display += `\nStatus: ${item.status}`;
+  if (item.platform)      display += `\nPlatform: ${item.platform}`;
+  if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
+  if (item.subgenres)     display += `\nSubgenres: ${item.subgenres}`;
+  if (item.tone)          display += `\nTone: ${item.tone}`;
+  if (item.lifecycle)     display += `\nLifecycle: ${item.lifecycle}`;
+  if (item.year)          display += `\nYear: ${item.year}`;
+  if (item.seasons)       display += `\nSeasons: ${item.seasons}`;
+  if (item.progress)      display += `\nProgress: ${item.progress}`;
+  if (item.notes)         display += `\nNotes: ${item.notes}`;
+  if (item.date_watched)  display += `\nDate watched: ${item.date_watched}`;
+  addMsg('assistant', display);
+  return;
+}
+
   
   const FIELD_NAMES = ['subgenres','subgenre','genre','platform','tone','status','format','lifecycle','progress','year','notes','seasons','runtime','imdb'];
   const afterAdd = reply.replace(/^add\s+/i, '').trim();
