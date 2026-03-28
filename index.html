@@ -1875,6 +1875,12 @@ JSON>>>
 
 If no data changes are needed, do NOT output a JSON block.
 
+CORRECTION HANDLING:
+- If the user says "incorrect", "wrong", "that's not right", "undo", "revert", or similar after an update:
+  - DO NOT ask "which title and field?" — use conversation context to know what was just changed
+  - Offer to verify via TMDb OR ask for the correct value: e.g. "Should I recheck TMDb to verify the lifecycle for Resident Alien?" or "Apologies — what should the lifecycle be set to?"
+  - Keep it to one short question, not a paragraph
+
 `;
   
 function addMsg(role, text, jsonApplied) {
@@ -2256,7 +2262,14 @@ addMsg('assistant', display);
 // ============================================================
 if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith('lookup ')) {
   const checkTitle = userText.replace(/^(check|show|lookup)\s+/i, '').trim();
-  const match = resolveLibraryTitle(checkTitle);
+  let match = resolveLibraryTitle(checkTitle);
+
+  // Fallback: scan query for a library title as a substring (handles "check resident alien data")
+  if (!match.item) {
+    const inner = library.find(item => checkTitle.toLowerCase().includes(item.title.toLowerCase()));
+    if (inner) match = { item: inner, fuzzy: false };
+  }
+
   if (!match.item) {
     addMsg('assistant', `❌ "${checkTitle}" not found in your library.`);
     return;
@@ -2569,4 +2582,3 @@ if ('serviceWorker' in navigator) {
 
 </body>
 </html>
-
