@@ -745,10 +745,9 @@ const SCHEMA = {
   notes: '',
   date_watched: ''
 };
-const REQUIRED_METADATA_FIELDS = ['format','status','platform','genre','year','lifecycle','subgenres','tone'];
 
 // ============================================================
-// STATES
+// STATE
 // ============================================================
 let library = [];
 let convoHistory = [];
@@ -756,13 +755,7 @@ let currentTab = 'assistant';
 let pendingSelection = null;
 let pendingUpdate = null;
 let pendingDuplicate = null;
-let pendingMergeDuplicates = false;
 let pendingDelete = null;
-let pendingClear = null;
-let pendingMetadataUpdate = null;
-let pendingMissingFieldsReview = false;
-let pendingMissingTitleContext = null;
-let pendingPlatformConfirmation = null;
 
 let api_key = localStorage.getItem("tmdb_api_key") || "";
   
@@ -796,6 +789,7 @@ if (full) {
       }
 library = merged;
 
+// normalizeLibrary migrates legacy field names
 normalizeLibrary();
 await saveLibrary();
       
@@ -826,7 +820,6 @@ normalizeLibrary();
 }
 
 async function saveLibrary() {
-  normalizeLibrary();
   try {
 
     localStorage.setItem(STORAGE_KEY + "_full", JSON.stringify(library));
@@ -1167,42 +1160,22 @@ function importRows(rows, statusEl) {
     if (row.format && !VALID_FORMATS.includes(row.format)) badFormat.push(`${row.title}: "${row.format}"`);
 
     if (existing) {
+      // Silently skip duplicates — same behaviour as paste import
       duplicates.push(row.title);
       let changed = false;
-      
-const changes = [];
-
-for (const [k, v] of Object.entries(row)) {
-  if (!v) continue;
-
-  // Only update if value is different
-  if (existing[k] !== v) {
-    changes.push(`${k}: ${existing[k] || '(empty)'} → ${v}`);
-  }
-}
-      
-if (changes.length) {
-  addMsg('assistant', `
-🔄 Updating: ${row.title}
-
-Changes:
-${changes.join('\n')}
-
-Confirm? (yes/no)
-  `);
-
-  clearBlockingPendingStates('update');
-  pendingUpdate = { existing, updates: row, title: row.title };
-  return;
-} else {
-  skipped++;
-}
+      for (const [k, v] of Object.entries(row)) {
+        if (v && (existing[k] === undefined || existing[k] === '')) {
+          existing[k] = v;
+          changed = true;
+        }
+      }
+      if (changed) updated++; else skipped++;
     } else {
       library.push({
         title: row.title,
         status: VALID_STATUSES.includes(row.status) ? row.status : 'Watchlist',
         format: VALID_FORMATS.includes(row.format) ? row.format : '',
-        genre: row.genre || '',
+        primary_genre: row.primary_genre || '',
         subgenres: row.subgenres || '',
         tone: row.tone || '',
         platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
@@ -1211,7 +1184,7 @@ Confirm? (yes/no)
         year: row.year || '',
         notes: row.notes || '',
         date_watched: row.date_watched || '',
-        imdbid: row.imdb_id || '',
+        imdbid: row.imdbid || row.imdb_id || '',
         runtime: row.runtime || '',
       });
       added++;
@@ -1413,13 +1386,6 @@ function normalizeTitle(s) {
 function normalizePlatform(name) {
   if (!name) return "";
 
-  const lower = String(name).toLowerCase();
-  if (lower.includes('prime')) return 'Prime';
-  if (lower.includes('apple')) return 'Apple TV';
-  if (lower.includes('disney')) return 'Disney';
-  if (lower.includes('netflix')) return 'Netflix';
-  if (lower.includes('crave') || lower.includes('hbo')) return 'Crave';
-
   const map = {
     "Amazon Prime Video": "Prime",
     "Apple TV Plus": "Apple TV",
@@ -1491,147 +1457,26 @@ return tone;
     return "";
   }
 }
-
-// ============================================================
-// INFER MISSING METADATA AI HELPER
-// ============================================================
-  async function inferMissingMetadataAI(item, first) {
-    try {
-      const overview = first?.overview || '';
-      const title = item?.title || '';
-      const format = item?.format || '';
-      const genre = item?.genre || '';
-      const year =
-        item?.year ||
-        first?.first_air_date?.slice(0, 4) ||
-        first?.release_date?.slice(0, 4) ||
-        '';
-      const status = item?.status || '';
   
-      const prompt = `
-  You are filling missing metadata for a personal watchlist entry.
-  
-  Title: ${title}
-  Format: ${format}
-  Genre: ${genre}
-  Year: ${year}
-  Status: ${status}
-  Overview: ${overview}
-  
-  The user is in Canada and wants platform suggestions relevant to Canada.
-  Return ONLY valid JSON in this shape:
-  {
-    "tone": "comma-separated tones or empty string",
-    "platform": "best platform guess in Canada or empty string"
-  }
-  
-  Rules:
-  - Keep tone concise and descriptive.
-  - Platform should be a likely streaming/home platform guess in Canada.
-  - If unsure, use empty string.
-  `;
-  
-      const API_KEY = getOpenAIKey();
-      if (!API_KEY) return { tone: '', platform: '' };
-  
-      const messages = [
-        {
-          role: "system",
-          content: "Return only valid JSON with keys tone and platform."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ];
-  
-      const data = await callAssistant(messages, API_KEY);
-      const raw = data?.choices?.[0]?.message?.content?.trim() || '';
-  
-      let parsed;
-      try {
-        parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      } catch {
-        console.warn('AI returned non-JSON:', raw);
-        return { tone: '', platform: '' };
-      }
-  
-      return {
-        tone: parsed?.tone || '',
-        platform: parsed?.platform || ''
-      };
-    } catch (err) {
-      console.error('inferMissingMetadataAI error:', err);
-      return { tone: '', platform: '' };
+// Migrates legacy field names on items loaded from old storage versions
+function normalizeLibrary() {
+  library.forEach(item => {
+    // Migrate legacy 'genre' → 'primary_genre'
+    if (item.genre && !item.primary_genre) {
+      item.primary_genre = item.genre;
     }
-  }
-  
-async function interpretSelectionAI(reply, results) {
-  try {
-    const API_KEY = getOpenAIKey();
-    if (!API_KEY) return null;
+    if (!item.primary_genre) item.primary_genre = '';
+    delete item.genre;
 
-    const options = results.map((r, i) => {
-      const title = r.title || r.name || "";
-      const year = (r.release_date || r.first_air_date || "").split("-")[0];
-      const type = r.media_type || (r.first_air_date ? "tv" : "movie");
-      return `${i + 1}. ${title}${year ? ` (${year})` : ""} [${type}]`;
-    }).join("\n");
-
-    const messages = [
-      {
-        role: "system",
-        content: "Return only the best matching option number as a single digit. If unclear, return 0."
-      },
-      {
-        role: "user",
-        content: `User reply: "${reply}"\n\nOptions:\n${options}`
-      }
-    ];
-
-    const data = await callAssistant(messages, API_KEY);
-    const text = data.choices?.[0]?.message?.content?.trim() || "";
-    const match = text.match(/\b([0-9]|10)\b/);
-    if (!match) return null;
-
-    const choice = parseInt(match[1], 10);
-    return choice > 0 ? choice : null;
-
-  } catch (e) {
-    console.warn("Selection AI failed:", e);
-    return null;
-  }
+    // Migrate legacy camelCase 'subGenres' → 'subgenres'
+    if (item.subGenres && !item.subgenres) {
+      item.subgenres = item.subGenres;
+    }
+    if (!item.subgenres) item.subgenres = '';
+    delete item.subGenres;
+  });
 }
 
-async function interpretYesNoAI(reply) {
-  try {
-    const API_KEY = getOpenAIKey();
-    if (!API_KEY) return null;
-
-    const messages = [
-      {
-        role: "system",
-        content: 'Return only one word: "yes", "no", or "unknown".'
-      },
-      {
-        role: "user",
-        content: `Interpret this reply: "${reply}"`
-      }
-    ];
-
-    const data = await callAssistant(messages, API_KEY);
-    const text = data.choices?.[0]?.message?.content?.trim().toLowerCase() || "";
-
-    if (text.includes("yes")) return "yes";
-    if (text.includes("no")) return "no";
-    return null;
-
-  } catch (e) {
-    console.warn("Yes/No AI failed:", e);
-    return null;
-  }
-}
-  
 function findByTitle(title) {
   const needle = normalizeTitle(title);
   return library.find(x => x.title && normalizeTitle(x.title) === needle);
@@ -1728,9 +1573,7 @@ if (lowerKey === 'genres' && value) {
   out[norm] = value;
 }
 
-  if (out.primary_genre && !out.genre) {
-  out.genre = out.primary_genre;
-}
+  // Do NOT back-populate legacy 'genre' field — always use primary_genre
 
   if (out.platform) {
   const p = out.platform.toLowerCase();
@@ -1787,8 +1630,11 @@ Object.assign(existing, normalized);
       updated++;
     } else if ((op.action || '').toLowerCase().trim() === 'add') {
       if (existing) {
+        // Title already exists — backfill any empty fields only
+        const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
+        const normalized = normalizeFields(rawFields);
         let changed = false;
-        for (const [k,v] of Object.entries(fields)) {
+        for (const [k,v] of Object.entries(normalized)) {
           if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
         }
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
@@ -1872,10 +1718,10 @@ function buildLibraryContext() {
   const watchlist = library.filter(x=>x.status==='Watchlist').slice().reverse().slice(0,80);
   const allTitles = library.map(x=>x.title).join('|');
 
-  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdbid||''}]`).join('\n');
+  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.primary_genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdbid||''}]`).join('\n');
 
   const incomplete = library
-    .filter(x => !x.format || !x.genre || !x.year || !x.imdbid || (!x.lifecycle && x.format !== 'Movie'))
+    .filter(x => !x.format || !x.primary_genre || !x.year || !x.imdbid || (!x.lifecycle && x.format !== 'Movie'))
     .slice().reverse().slice(0, 50);
 
   return `=== LIBRARY CONTEXT ===
@@ -2063,241 +1909,6 @@ function removeTyping() {
   if (t) t.remove();
 }
 
-function isAffirmative(text) {
-  return /\b(y|yes|yep|yeah|yup|sure|ok|okay|do it|confirm|add it|sounds good|all|go ahead|apply)\b/i.test(text.trim());
-}
-
-function isNegative(text) {
-  return /\b(n|no|nope|nah|cancel|stop|never mind|nevermind|back|skip)\b/i.test(text.trim());
-}  
-
-function getFieldValue(item, field) {
-  switch (field) {
-    case 'genre':
-      return item.genre || item.primary_genre || '';
-    case 'subgenres':
-      return item.subgenres || item.subGenres || '';
-    default:
-      return item[field];
-  }
-}
-
-function isBlankValue(value) {
-  if (value == null) return true;
-  if (Array.isArray(value)) return value.length === 0;
-  return String(value).trim() === '';
-}
-
-function getMissingRequiredFields(item) {
-  return REQUIRED_METADATA_FIELDS.filter(field => isBlankValue(getFieldValue(item, field)));
-}
-
-function formatMissingFieldsLabel(fields) {
-  return fields.map(field => {
-    if (field === 'genre') return 'genre';
-    if (field === 'subgenres') return 'subgenres';
-    return field;
-  }).join(', ');
-}
-
-function groupMissingEntries(entries) {
-  const grouped = new Map();
-
-  for (const entry of entries) {
-    const key = [...entry.missing].sort().join('|');
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(entry.item);
-  }
-
-  return [...grouped.entries()].map(([key, items]) => ({
-    key,
-    fields: key ? key.split('|') : [],
-    items
-  })).sort((a, b) => {
-    if (b.fields.length !== a.fields.length) return b.fields.length - a.fields.length;
-    return a.key.localeCompare(b.key);
-  });
-}
-
-function formatGroupedMissingEntries(entries, { maxTitlesPerGroup = 12 } = {}) {
-  const groups = groupMissingEntries(entries);
-  const lines = ['Missing required metadata:'];
-
-  for (const group of groups) {
-    lines.push(``);
-    lines.push(`${formatMissingFieldsLabel(group.fields)} (${group.items.length}):`);
-    const shown = group.items.slice(0, maxTitlesPerGroup);
-    shown.forEach(item => lines.push(`- ${item.title}`));
-    if (group.items.length > shown.length) {
-      lines.push(`- ...and ${group.items.length - shown.length} more`);
-    }
-  }
-
-  return lines.join('\n').trim();
-}
-
-function formatPatchPreview(updates) {
-  const order = ['format','status','genre','year','lifecycle','subgenres','tone','platform'];
-  return order
-    .filter(field => updates[field])
-    .map(field => `${field}: ${updates[field]}`)
-    .join('; ');
-}
-
-function extractTitleFromMissingQuery(reply) {
-  let m = reply.match(/^is\s+(.+?)\s+missing(?:\s+data|\s+metadata|\s+fields?)?\??$/i);
-  if (m) return m[1].trim();
-
-  m = reply.match(/^what(?:'s| is)?\s+missing\s+(?:for|from)\s+(.+?)\??$/i);
-  if (m) return m[1].trim();
-
-  m = reply.match(/^show\s+(?:me\s+)?missing\s+(?:data|metadata|fields?)\s+(?:for\s+)?(.+?)\??$/i);
-  if (m) return m[1].trim();
-
-  return '';
-}
-
-function normalizeItemShape(item) {
-  if (!item || typeof item !== 'object') return item;
-  if (!item.genre && item.primary_genre) item.genre = item.primary_genre;
-  if (!item.primary_genre && item.genre) item.primary_genre = item.genre;
-  if (!item.subgenres && item.subGenres) item.subgenres = item.subGenres;
-  delete item.subGenres;
-  if (item.platform) item.platform = normalizePlatform(item.platform);
-  if (item.status) {
-    const s = String(item.status).trim().toLowerCase();
-    if (s === 'watching') item.status = 'Watching';
-    else if (s === 'watchlist') item.status = 'Watchlist';
-    else if (s === 'watched') item.status = 'Watched';
-    else if (s === 'abandoned') item.status = 'Abandoned';
-  }
-  return item;
-}
-
-function normalizeLibrary() {
-  library = (library || []).map(item => normalizeItemShape(item));
-}
-
-
-function clearBlockingPendingStates(except = '') {
-  if (except !== 'selection') pendingSelection = null;
-  if (except !== 'update') pendingUpdate = null;
-  if (except !== 'duplicate') pendingDuplicate = null;
-  if (except !== 'delete') pendingDelete = null;
-  if (except !== 'clear') pendingClear = null;
-  if (except !== 'merge') pendingMergeDuplicates = false;
-  if (except !== 'metadata') pendingMetadataUpdate = null;
-  if (except !== 'missing-review') pendingMissingFieldsReview = false;
-  if (except !== 'missing-title') pendingMissingTitleContext = null;
-  if (except !== 'platform') pendingPlatformConfirmation = null;
-}
-
-function isMissingUpdateFollowup(reply) {
-  return [
-    'update missing metadata',
-    'update missing data',
-    'update it',
-    'fix it',
-    'fill it',
-    'please update',
-    'please fix it',
-    'please fill it',
-    'update those',
-    'update them',
-    'fix those',
-    'fix them',
-    'fill those',
-    'fill them',
-    'update metadata',
-    'fix metadata',
-    'fill metadata'
-  ].includes(reply);
-}
-
-async function fetchTMDbDetailsForItem(item) {
-  const search = await fetchTMDbData(item.title);
-  const results = search?.results || [];
-  if (!results.length) return null;
-
-  const wantedTv = ['series', 'miniseries'].includes(String(item.format || '').toLowerCase());
-  const wantedMovie = String(item.format || '').toLowerCase() === 'movie';
-
-  const selected = results.find(r => {
-    const isTv = !!r.first_air_date || r.media_type === 'tv';
-    const isMovie = !!r.release_date || r.media_type === 'movie';
-    if (wantedTv) return isTv;
-    if (wantedMovie) return isMovie;
-    return r.media_type === 'tv' || r.media_type === 'movie';
-  }) || results[0];
-
-  let endpoint = 'movie';
-  if (selected.media_type === 'tv' || selected.first_air_date) endpoint = 'tv';
-
-  const key = getTMDbKey();
-  if (!key || !selected?.id) return null;
-
-  try {
-    const detailsRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`);
-    const details = await detailsRes.json();
-
-    let platform = '';
-    try {
-      const providerRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${key}`);
-      const providerData = await providerRes.json();
-      const ca = providerData.results?.CA;
-      if (ca?.flatrate?.length) platform = normalizePlatform(ca.flatrate[0].provider_name);
-      else if (ca?.ads?.length) platform = normalizePlatform(ca.ads[0].provider_name);
-      else if (ca?.rent?.length) platform = normalizePlatform(ca.rent[0].provider_name);
-    } catch (e) {
-      console.warn('Provider fetch failed:', e);
-    }
-
-    return { selected, endpoint, details, platform };
-  } catch (e) {
-    console.error('fetchTMDbDetailsForItem error:', e);
-    return null;
-  }
-}
-
-async function buildMetadataPatch(item) {
-  const tmdb = await fetchTMDbDetailsForItem(item);
-  if (!tmdb?.details) return null;
-
-  const { details, endpoint, platform } = tmdb;
-  const rawGenres = details.genres?.map(g => g.name) || [];
-  const normalizedGenres = rawGenres.map(g =>
-    g === 'Science Fiction' || g === 'Sci-Fi & Fantasy' ? 'Sci-Fi' : g
-  );
-
-  let primaryGenre = normalizedGenres[0] || '';
-  if (normalizedGenres.includes('Sci-Fi')) primaryGenre = 'Sci-Fi';
-  const subgenres = normalizedGenres.filter(g => g !== primaryGenre).join(', ');
-
-  let lifecycle = '';
-  if (endpoint === 'tv') {
-    if (details.status === 'Returning Series') lifecycle = 'Ongoing';
-    else if (details.status === 'Ended') lifecycle = 'Finished';
-    else if (details.status === 'Canceled') lifecycle = 'Cancelled';
-  } else {
-    lifecycle = 'Finished';
-  }
-
-  const year = (details.first_air_date || details.release_date || '').split('-')[0];
-  const tone = await detectToneAI(details, normalizedGenres);
-
-  return {
-    format: item.format || (endpoint === 'tv' ? ((details.number_of_seasons === 1 && details.status === 'Ended') ? 'Miniseries' : 'Series') : 'Movie'),
-    status: item.status || 'Watchlist',
-    platform: platform || '',
-    genre: primaryGenre || '',
-    primary_genre: primaryGenre || '',
-    year: year || '',
-    lifecycle: lifecycle || '',
-    subgenres: subgenres || '',
-    tone: tone || ''
-  };
-}
-  
 function parseAndApplyJSON(text) {
 const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
   if (!match) return null;
@@ -2343,181 +1954,18 @@ updates.forEach(item => {
 async function sendMessage(userText) {
   if (!userText.trim()) return;
 
-  const reply = userText.toLowerCase().trim();
-
   addMsg('user', userText);
+  const reply = userText.toLowerCase().trim();
       console.log("STATE CHECK:", {
         reply,
         pendingSelection,
         pendingDelete,
         pendingDuplicate,
-        pendingUpdate,
-        pendingPlatformConfirmation,
-        pendingMetadataUpdate
+        pendingUpdate
       });
-
-  if (pendingMetadataUpdate) {
-    if (isAffirmative(reply)) {
-      let updatedTitles = 0;
-
-      for (const entry of pendingMetadataUpdate.entries) {
-        Object.assign(entry.item, entry.updates);
-        normalizeItemShape(entry.item);
-        updatedTitles++;
-      }
-
-      const platformSuggestions = pendingMetadataUpdate.platformSuggestions || [];
-      const summaryBits = pendingMetadataUpdate.summaryBits || [];
-
-      pendingMetadataUpdate = null;
-      pendingMissingFieldsReview = false;
-      pendingMissingTitleContext = null;
-      await saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-
-      if (platformSuggestions.length) {
-        pendingPlatformConfirmation = { items: platformSuggestions };
-
-        let msg = summaryBits.length
-          ? `✅ Filled ${summaryBits.join(', ')} across ${updatedTitles} title${updatedTitles === 1 ? '' : 's'}.\n\n`
-          : `✅ Filled blank metadata across ${updatedTitles} title${updatedTitles === 1 ? '' : 's'}.\n\n`;
-
-        msg += 'I found likely Canadian platform matches for these titles:\n';
-        msg += platformSuggestions
-          .map((entry, index) => `${index + 1}. ${entry.item.title} → ${entry.suggestedPlatform}`)
-          .join('\n');
-        msg += '\n\nReply yes, all, typical Canadian assumptions, no, or numbers like 1, 3, 5.';
-
-        addMsg('assistant', msg);
-        return;
-      }
-
-      if (summaryBits.length) {
-        addMsg('assistant', `✅ Filled ${summaryBits.join(', ')} across ${updatedTitles} title${updatedTitles === 1 ? '' : 's'}.`);
-      } else {
-        addMsg('assistant', `✅ Updated ${updatedTitles} title${updatedTitles === 1 ? '' : 's'}.`);
-      }
-      return;
-    }
-
-    if (isNegative(reply)) {
-      pendingMetadataUpdate = null;
-      pendingMissingFieldsReview = false;
-      pendingMissingTitleContext = null;
-      addMsg('assistant', 'Okay — cancelled missing metadata update.');
-      return;
-    }
-
-    addMsg('assistant', 'Please reply yes or no 🙂');
-    return;
-  }
-
-  if (pendingPlatformConfirmation) {
-    if (isNegative(reply)) {
-      pendingPlatformConfirmation = null;
-      addMsg('assistant', 'Okay — skipped platform assumptions.');
-      return;
-    }
-
-    const applyAll =
-      isAffirmative(reply) ||
-      reply === 'all' ||
-      reply.includes('all of them') ||
-      reply.includes('typical canadian') ||
-      reply.includes('canadian assumptions') ||
-      reply.includes('canada defaults');
-
-    if (applyAll) {
-      let updated = 0;
-
-      for (const entry of pendingPlatformConfirmation.items) {
-        if (!entry.item.platform && entry.suggestedPlatform) {
-          entry.item.platform = entry.suggestedPlatform;
-          updated++;
-        }
-      }
-
-      pendingPlatformConfirmation = null;
-      await saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-
-      addMsg(
-        'assistant',
-        reply.includes('typical canadian') || reply.includes('canadian assumptions') || reply.includes('canada defaults')
-          ? `✅ Applied typical Canadian platform assumptions to ${updated} title${updated === 1 ? '' : 's'}.`
-          : `✅ Updated platform for ${updated} title${updated === 1 ? '' : 's'}.`
-      );
-      return;
-    }
-
-    const selectedNumbers = [...new Set((reply.match(/\b\d+\b/g) || []).map(n => parseInt(n, 10)).filter(n => !isNaN(n)))];
-
-    if (selectedNumbers.length) {
-      let updated = 0;
-
-      selectedNumbers.forEach(num => {
-        const entry = pendingPlatformConfirmation.items[num - 1];
-        if (entry && !entry.item.platform && entry.suggestedPlatform) {
-          entry.item.platform = entry.suggestedPlatform;
-          updated++;
-        }
-      });
-
-      pendingPlatformConfirmation = null;
-      await saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-      addMsg('assistant', `✅ Updated platform for ${updated} selected title${updated === 1 ? '' : 's'}.`);
-      return;
-    }
-
-    addMsg('assistant', 'Reply with yes, no, all, typical Canadian assumptions, or numbers like 1, 3, 5.');
-    return;
-  }
   
-  if (pendingUpdate) {
-    if (isAffirmative(reply)) {
-      const item = pendingUpdate.existing || library.find(i =>
-        (i.title || '').toLowerCase() === (pendingUpdate.title || '').toLowerCase()
-      );
-
-      if (!item) {
-        pendingUpdate = null;
-        addMsg('assistant', '❌ Could not find that title to update.');
-        return;
-      }
-
-      const updates = pendingUpdate.updates || pendingUpdate.row || {};
-      Object.assign(item, updates);
-      normalizeItemShape(item);
-
-      pendingUpdate = null;
-      await saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-
-      addMsg('assistant', `✅ Updated "${item.title}".`);
-      return;
-    }
-
-    if (isNegative(reply)) {
-      pendingUpdate = null;
-      addMsg('assistant', 'Cancelled.');
-      return;
-    }
-
-    addMsg('assistant', 'Please reply yes or no 🙂');
-    return;
-  }
-
   if (pendingSelection && pendingSelection.newItem) {
-    if (isAffirmative(reply)) {
+    if (['yes','y','ok','okay','confirm','add'].includes(reply)) {
       library.push(pendingSelection.newItem);
       saveLibrary();
       updateStats();
@@ -2528,7 +1976,7 @@ async function sendMessage(userText) {
       return;
     }
 
-    if (isNegative(reply)) {
+    if (['no','n','cancel'].includes(reply)) {
       pendingSelection = null;
       addMsg('assistant', '❌ Cancelled.');
       return;
@@ -2537,235 +1985,76 @@ async function sendMessage(userText) {
     addMsg('assistant', 'Please reply yes or no 🙂');
     return;
   }
-    
-// ============================================================
-// MERGE HELPER
-// ============================================================
-function getStatusRank(status) {
-  const s = (status || '').toLowerCase();
 
-  if (s === 'watched') return 4;
-  if (s === 'watching') return 3;
-  if (s === 'abandoned') return 2;
-  if (s === 'watchlist') return 1;
-
-  return 0;
-}
-
-function getMetadataScore(item) {
-  let score = 0;
-
-  if (item.format) score++;
-  if (item.genre) score++;
-  if (item.subGenres || item.subgenres) score++;
-  if (item.tone) score++;
-  if (item.platform) score++;
-  if (item.lifecycle) score++;
-  if (item.year) score++;
-  if (item.runtime) score++;
-  if (item.seasons) score++;
-  if (item.imdbId) score++;
-
-  return score;
-}
-  
-// ============================================================
-// MERGE HANDLER
-// ============================================================
-  if (pendingMergeDuplicates) {
-    if (isAffirmative(reply) || reply.startsWith('merge') || reply.startsWith('clean')) {
-      // merge duplicates (best entry)
-      const grouped = new Map();
-  
-      for (const item of library) {
-        const key = (item.title || '').toLowerCase();
-        if (!key) continue;
-      
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(item);
-      }
-      
-      const mergedLibrary = [];
-      let removed = 0;
-      
-      for (const [, items] of grouped) {
-        if (items.length === 1) {
-          mergedLibrary.push(items[0]);
-          continue;
-        }
-      
-        const sorted = [...items].sort((a, b) => {
-          const statusDiff = getStatusRank(b.status) - getStatusRank(a.status);
-          if (statusDiff !== 0) return statusDiff;
-      
-          const metaDiff = getMetadataScore(b) - getMetadataScore(a);
-          if (metaDiff !== 0) return metaDiff;
-      
-          return 0;
-        });
-      
-        mergedLibrary.push(sorted[0]);
-        removed += items.length - 1;
-      }
-      
-      library = mergedLibrary;
-      
-      saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-          
-        if (removed === 0) {
-          addMsg('assistant', '✨ No duplicates found to merge.');
-        } else {
-          addMsg('assistant', `✅ Removed ${removed} duplicate entr${removed === 1 ? 'y' : 'ies'}.`);
-        }
-      pendingMergeDuplicates = false;
-      
-      return;
-    }
-  
-    if (isNegative(reply)) {
-      pendingMergeDuplicates = false;
-      addMsg('assistant', '👍 Okay, not merging duplicates.');
-      return;
-    }
-  
-    addMsg('assistant', 'Please reply yes or no 🙂');
-    return;
-  }
-  
 // ============================================================
 // DUPLICATE HANDLER
 // ============================================================
-  if (pendingDuplicate) {
-  
-    if (isAffirmative(reply)) {
-  
-      const tmdbData = await fetchTMDbData(pendingDuplicate.title);
-  
-      if (!tmdbData?.results?.length) {
-        addMsg('assistant', '❌ No results found.');
-        pendingDuplicate = null;
-        return;
-      }
-  
-      const results = tmdbData.results.slice(0, 5);
-  
-      pendingSelection = { results };
+if (pendingDuplicate) {
+
+  if (['yes','y','ok','search'].includes(reply)) {
+
+    const tmdbData = await fetchTMDbData(pendingDuplicate.title);
+
+    if (!tmdbData?.results?.length) {
+      addMsg('assistant', '❌ No results found.');
       pendingDuplicate = null;
-  
-      const options = results.map((r, i) => {
-        const name = r.title || r.name;
-        const year = (r.release_date || r.first_air_date || '').split('-')[0];
-        return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
-      }).join('\n');
-  
-      addMsg('assistant', `Here are some alternatives:\n\n${options}\n\nPick a number.`);
       return;
     }
-  
-    if (isNegative(reply)) {
-      pendingDuplicate = null;
-      addMsg('assistant', '👍 Okay, not searching for another version.');
-      return;
-    }
-  
-    addMsg('assistant', 'Please reply yes or no 🙂');
-    return;
-  }
-  
-  // ============================================================
-  // DELETE HANDLER
-  // ============================================================
-  if (pendingDelete) {
-  
-    if (isAffirmative(reply)) {
-  
-      library = library.filter(item => item !== pendingDelete);
-  
-      saveLibrary();
-      refreshSearch();
-      renderWatching();
-  
-      addMsg('assistant', `🗑️ Removed "${pendingDelete.title}"`);
-  
-      pendingDelete = null;
-      return;
-    }
-  
-    if (isNegative(reply)) {
-      pendingDelete = null;
-      addMsg('assistant', 'Cancelled.');
-      return;
-    }
-    
-    // 🤖 AI fallback for unclear replies
-  const aiResult = await interpretYesNoAI(reply);
-  
-    if (aiResult === "yes") {
-      // same code as your YES block
-      // (copy it exactly, don’t rewrite)
-      const title = pendingDelete.title;
-      library = library.filter(item => item.title !== title);
-      pendingDelete = null;
-      saveLibrary();
-      updateStats();
-      refreshSearch();
-      renderWatching();
-      addMsg('assistant', `🗑️ Removed "${title}"`);
-      return;
-    }
-  
-    if (aiResult === "no") {
-      pendingDelete = null;
-      addMsg('assistant', '❌ Delete cancelled.');
-      return;
-    }
-  
-    addMsg('assistant', 'Please reply yes or no 🙂');
+
+    const results = tmdbData.results.slice(0, 5);
+
+    pendingSelection = { results };
+    pendingDuplicate = null;
+
+    const options = results.map((r, i) => {
+      const name = r.title || r.name;
+      const year = (r.release_date || r.first_air_date || '').split('-')[0];
+      return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
+    }).join('\n');
+
+    addMsg('assistant', `Here are some alternatives:\n\n${options}\n\nPick a number.`);
     return;
   }
 
-// ============================================================
-// SELECTION HANDLER
-// ============================================================
-  if (pendingSelection && pendingSelection.results) {
-    if (isNegative(reply)) {
-      pendingSelection = null;
-      addMsg('assistant', '❌ Selection cancelled.');
-      return;
-    }
-      const match = reply.match(/\b([1-9]|10)\b/);
-      let choice = match ? parseInt(match[1], 10) : NaN;
-    
-      // fallback: detect "first", "second", etc.
-      const wordMap = {
-        first: 1,
-        second: 2,
-        third: 3,
-        fourth: 4,
-        fifth: 5
-      };
-      
-      if (isNaN(choice)) {
-        for (const word in wordMap) {
-          if (reply.toLowerCase().includes(word)) {
-            choice = wordMap[word];
-            break;
-          }
-        }
-      }
-    
-    // 🤖 AI fallback if no valid number detected
-if (isNaN(choice)) {
-  const aiChoice = await interpretSelectionAI(reply, pendingSelection.results);
-  if (aiChoice) {
-    choice = aiChoice;
-    console.log("🤖 AI selected option:", choice);
+  if (['no','n','cancel'].includes(reply)) {
+    pendingDuplicate = null;
+    addMsg('assistant', '👍 Okay, not adding.');
+    return;
   }
+
+  addMsg('assistant', 'Please reply yes or no 🙂');
+  return;
 }
-    
+
+if (pendingDelete) {
+
+  if (['yes','y','confirm'].includes(reply)) {
+
+    library = library.filter(item => item !== pendingDelete);
+
+    saveLibrary();
+    refreshSearch();
+    renderWatching();
+
+    addMsg('assistant', `🗑️ Removed "${pendingDelete.title}"`);
+
+    pendingDelete = null;
+    return;
+  }
+
+  if (['no','n','cancel'].includes(reply)) {
+    pendingDelete = null;
+    addMsg('assistant', 'Cancelled.');
+    return;
+  }
+
+  addMsg('assistant', 'Please reply yes or no 🙂');
+  return;
+}
+  
+  if (pendingSelection && pendingSelection.results) {
+    const choice = parseInt(userText.trim(), 10);
+
     if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
       const selected = pendingSelection.results[choice - 1];
 
@@ -2858,9 +2147,9 @@ const newItem = {
   title,
   format: type,
 
-  // Genre
-  genre: primaryGenre,
-  subGenres,
+  // Genre (standardized field names)
+  primary_genre: primaryGenre,
+  subgenres: subGenres,
   tone,
 
   // Platform + lifecycle
@@ -2888,9 +2177,7 @@ const newItem = {
       if (year) display += `\nYear: ${year}`;
       display += `\n\nConfirm add? (yes/no)`;
 
-      clearBlockingPendingStates('selection');
       addMsg('assistant', display);
-      pendingSelection = pendingSelection || {};
       pendingSelection.newItem = newItem;
       return;
     }
@@ -2899,328 +2186,6 @@ const newItem = {
     return;
   }
 
-  if (
-    reply.startsWith('merge') ||
-    (
-      reply.includes('duplicate') &&
-      (
-        reply.startsWith('delete ') ||
-        reply.startsWith('remove ') ||
-        reply.startsWith('merge ')
-      )
-    )
-  ) {
-  const counts = {};
-      
-      for (const item of library) {
-        const key = (item.title || '').toLowerCase();
-        if (!key) continue;
-        counts[key] = (counts[key] || 0) + 1;
-      }
-      
-      const duplicates = Object.entries(counts)
-        .filter(([, count]) => count > 1)
-        .sort((a, b) => b[1] - a[1]);
-      
-      const list = duplicates
-          .map(([title, count]) => {
-            const matching = library.filter(item =>
-              (item.title || '').toLowerCase() === title
-            );
-          
-            const formats = [...new Set(matching.map(i => i.format).filter(Boolean))];
-            const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
-            const years = [...new Set(matching.map(i => i.year).filter(Boolean))];
-          
-            return `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}
-                Format: ${formats.join(', ') || 'Unknown'}
-                Year: ${years.join(', ') || 'Unknown'}
-                Status: ${statuses.join(', ') || 'Unknown'}`;
-          })
-          .join('\n');
-      
-      pendingMergeDuplicates = true;
-      addMsg(
-        'assistant',
-        `I found duplicate titles:\n${list}\n\nDo you want me to merge duplicates by keeping one copy of each title? (yes/no)`
-      );
-    return;
-  }
-
-// ============================================================
-// SPECIFIC MISSING FIELDS QUERY
-// ============================================================
-  const specificMissingTitle = extractTitleFromMissingQuery(userText.trim());
-  if (specificMissingTitle) {
-    const resolved = resolveLibraryTitle(specificMissingTitle);
-
-    if (!resolved.item) {
-      addMsg('assistant', `❌ I couldn\'t find "${specificMissingTitle}" in your library.`);
-      return;
-    }
-
-    const missing = getMissingRequiredFields(resolved.item);
-    if (!missing.length) {
-      pendingMissingTitleContext = null;
-      addMsg('assistant', `✅ ${resolved.item.title} is not missing any required metadata.`);
-      return;
-    }
-
-    pendingMissingTitleContext = resolved.item;
-    addMsg(
-      'assistant',
-      `${resolved.item.title} is currently missing: ${formatMissingFieldsLabel(missing)}.
-
-Reply with "update it" to preview suggested fixes for this title.`
-    );
-    return;
-  }
-
-// ============================================================
-// UPDATE FIELDS HANDLER
-// ============================================================    
-  if (
-    reply === 'update missing metadata' ||
-    reply === 'update missing data' ||
-    (pendingMissingFieldsReview && isMissingUpdateFollowup(reply)) ||
-    (pendingMissingTitleContext && isMissingUpdateFollowup(reply))
-  ) {
-    const contextTitle = pendingMissingTitleContext ? pendingMissingTitleContext.title : '';
-    const targetItems = pendingMissingTitleContext
-      ? [pendingMissingTitleContext]
-      : library;
-
-    addMsg('assistant', pendingMissingTitleContext
-      ? `🔄 Checking blank metadata for ${contextTitle} and building suggested updates...`
-      : '🔄 Checking blank metadata and building suggested updates...');
-
-    const itemsToUpdate = targetItems
-      .map(item => ({ item, missing: getMissingRequiredFields(item) }))
-      .filter(entry => entry.missing.length);
-
-    if (!itemsToUpdate.length) {
-      pendingMissingFieldsReview = false;
-      pendingMissingTitleContext = null;
-      addMsg('assistant', contextTitle
-        ? `✨ ${contextTitle} is not missing any required metadata.`
-        : '✨ No titles with blank required metadata found.');
-      return;
-    }
-
-    const previewEntries = [];
-    const platformSuggestions = [];
-    const filledCounts = { status: 0, platform: 0, genre: 0, year: 0, lifecycle: 0, subgenres: 0, tone: 0, format: 0 };
-
-    for (const entry of itemsToUpdate) {
-      const { item, missing } = entry;
-      const patch = await buildMetadataPatch(item);
-      if (!patch) continue;
-
-      const updates = {};
-
-      if (missing.includes('format') && patch.format) {
-        updates.format = patch.format;
-        filledCounts.format++;
-      }
-
-      if (missing.includes('status') && patch.status) {
-        updates.status = patch.status;
-        filledCounts.status++;
-      }
-
-      if (missing.includes('genre') && patch.genre) {
-        updates.genre = patch.genre;
-        updates.primary_genre = patch.primary_genre || patch.genre;
-        filledCounts.genre++;
-      }
-
-      if (missing.includes('year') && patch.year) {
-        updates.year = patch.year;
-        filledCounts.year++;
-      }
-
-      if (missing.includes('lifecycle') && patch.lifecycle) {
-        updates.lifecycle = patch.lifecycle;
-        filledCounts.lifecycle++;
-      }
-
-      if (missing.includes('subgenres') && patch.subgenres) {
-        updates.subgenres = patch.subgenres;
-        filledCounts.subgenres++;
-      }
-
-      if (missing.includes('tone') && patch.tone) {
-        updates.tone = patch.tone;
-        filledCounts.tone++;
-      }
-
-      if (missing.includes('platform') && patch.platform) {
-        platformSuggestions.push({ item, suggestedPlatform: patch.platform });
-      }
-
-      if (Object.keys(updates).length) {
-        previewEntries.push({ item, updates });
-      }
-    }
-
-    pendingMissingFieldsReview = false;
-
-    const summaryBits = Object.entries(filledCounts)
-      .filter(([, count]) => count > 0)
-      .map(([field, count]) => `${field} for ${count}`);
-
-    if (!previewEntries.length && !platformSuggestions.length) {
-      pendingMissingTitleContext = null;
-      addMsg('assistant', contextTitle
-        ? `ℹ️ I checked ${contextTitle}, but could not confidently fill any additional fields.`
-        : 'ℹ️ I checked the blank metadata, but could not confidently fill any additional fields.');
-      return;
-    }
-
-    clearBlockingPendingStates('metadata');
-    pendingMetadataUpdate = {
-      entries: previewEntries,
-      platformSuggestions,
-      summaryBits
-    };
-
-    let msg = contextTitle
-      ? `Suggested metadata updates for ${contextTitle}`
-      : 'I found suggested metadata updates';
-
-    if (summaryBits.length) {
-      msg += `: ${summaryBits.join(', ')}.`;
-    } else {
-      msg += '.';
-    }
-
-    msg += '
-
-';
-
-    const previewLines = previewEntries.slice(0, 20).map(entry =>
-      `- ${entry.item.title} — ${formatPatchPreview(entry.updates)}`
-    );
-
-    if (previewLines.length) {
-      msg += previewLines.join('
-');
-      if (previewEntries.length > previewLines.length) {
-        msg += `
-- ...and ${previewEntries.length - previewLines.length} more`;
-      }
-    }
-
-    if (platformSuggestions.length) {
-      const platformPreview = platformSuggestions.slice(0, 10).map(entry =>
-        `- ${entry.item.title} → platform: ${entry.suggestedPlatform}`
-      );
-      msg += `
-
-Platform suggestions waiting for confirmation:
-${platformPreview.join('
-')}`;
-      if (platformSuggestions.length > platformPreview.length) {
-        msg += `
-- ...and ${platformSuggestions.length - platformPreview.length} more`;
-      }
-    }
-
-    msg += '
-
-Confirm update? (yes/no)';
-
-    pendingMissingTitleContext = null;
-    addMsg('assistant', msg.trim());
-    return;
-  }
-
-// ============================================================
-// SHOW MISSING FIELDS HANDLER
-// ============================================================
-  if (
-    reply === 'check missing data' ||
-    reply === 'check missing metadata' ||
-    reply === 'show missing data' ||
-    reply === 'show missing metadata' ||
-    reply === 'list missing data' ||
-    reply === 'list missing metadata' ||
-    reply === 'missing data' ||
-    reply === 'missing metadata' ||
-    reply === 'empty data' ||
-    reply === 'empty metadata' ||
-    reply === 'blank metadata'
-  ) {
-    const missingEntries = library
-      .map(item => ({ item, missing: getMissingRequiredFields(item) }))
-      .filter(entry => entry.missing.length);
-
-    if (!missingEntries.length) {
-      addMsg('assistant', '✨ No blank required metadata found.');
-      return;
-    }
-
-    const msg = `${formatGroupedMissingEntries(missingEntries)}\n\nReply with update missing metadata to preview suggested fixes.`;
-
-    pendingMissingFieldsReview = true;
-    addMsg('assistant', msg.trim());
-    return;
-  }
-
-  if (
-    (reply.startsWith('clear ') || reply.startsWith('delete ') || reply.startsWith('remove ')) && !reply.includes('duplicate')
-  ) {
-    
-  const phrase = reply.replace(/^(clear|delete|remove)\s+/, '').trim();
-
-  let items = [...library];
-
-  // status filters
-  if (phrase.includes('watched')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watched');
-  } else if (phrase.includes('watching')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watching');
-  } else if (phrase.includes('abandoned')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'abandoned');
-  } else if (phrase.includes('watchlist')) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watchlist');
-  }
-
-  // format filters
-  if (phrase.includes('movie') || phrase.includes('movies')) {
-    items = items.filter(item => item.format?.toLowerCase() === 'movie');
-  } else if (phrase.includes('series') || phrase.includes('show') || phrase.includes('shows')) {
-    items = items.filter(item => {
-      const f = item.format?.toLowerCase();
-      return f === 'series' || f === 'miniseries';
-    });
-  }
-
-  // simple genre filter
-  const genreWords = ['drama', 'sci-fi', 'comedy', 'horror', 'thriller', 'romance', 'mystery', 'crime', 'fantasy', 'documentary'];
-  const matchedGenre = genreWords.find(g => phrase.includes(g));
-  if (matchedGenre) {
-    items = items.filter(item => {
-      const genre = (item.genre || item.primary_genre || '').toLowerCase();
-      const sub = (item.subgenres || item.subGenres || '').toLowerCase();
-      return genre.includes(matchedGenre) || sub.includes(matchedGenre);
-    });
-  }
-
-  if (!items.length) {
-    addMsg('assistant', `❌ No items found for "${phrase}".`);
-    return;
-  }
-
-  pendingClear = {
-    items,
-    label: phrase
-  };
-
-  addMsg('assistant', `⚠️ This will remove ${items.length} item${items.length === 1 ? '' : 's'} from "${phrase}". Confirm? (yes/no)`);
-  return;
-}
-  
 if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
   const title = userText.replace(/^(delete|remove)\s+/i, '').trim();
@@ -3318,71 +2283,19 @@ if (existing) {
     return;
   }
 
-  if (reply.includes('duplicate')) {
-  const counts = {};
-
-  for (const item of library) {
-    const key = (item.title || '').toLowerCase();
-    if (!key) continue;
-    counts[key] = (counts[key] || 0) + 1;
-  }
-
-  const duplicates = Object.entries(counts)
-    .filter(([, count]) => count > 1)
-    .sort((a, b) => b[1] - a[1]);
-
-  if (!duplicates.length) {
-    addMsg('assistant', 'No duplicate titles found.');
-    return;
-  }
-
-  const list = duplicates
-    .map(([title, count]) => `• ${title.replace(/\b\w/g, c => c.toUpperCase())} ×${count}`)
-    .join('\n');
-
-  addMsg('assistant', `Duplicate titles:\n${list}`);
-  return;
-}
-  
-    if (
-      reply.includes('watched') ||
-      reply.includes('watching') ||
-      reply.includes('abandoned') ||
-      reply.includes('watchlist') ||
-      reply.includes('queue') ||
-      reply.includes('drama') ||
-      reply.includes('sci-fi') ||
-      reply.includes('comedy') ||
-      reply.includes('horror') ||
-      reply.includes('thriller') ||
-      reply.includes('romance') ||
-      reply.includes('mystery') ||
-      reply.includes('crime') ||
-      reply.includes('fantasy') ||
-      reply.includes('documentary')
-    ) {
-      const items = filterLibraryByReply(reply);
-    
-      if (!items.length) {
-        addMsg('assistant', `No matching titles found.`);
-        return;
-      }
-    
-      const list = items.map(i => `• ${i.title}`).join('\n');
-      addMsg('assistant', `Matching titles:\n${list}`);
-      return;
-    }  
-  
     // 🧠 Fallback to AI if no command matched
   try {
     const API_KEY = getOpenAIKey();
     if (!API_KEY) return;
   
     addTyping();
+
+    const libraryContext = buildLibraryContext();
+    const userMsgWithContext = `${libraryContext}\n\n---\nUSER MESSAGE:\n${userText}`;
   
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userText }
+      { role: "user", content: userMsgWithContext }
     ];
   
     const data = await callAssistant(messages, API_KEY);
@@ -3444,8 +2357,17 @@ async function init() {
   renderSearch('');
   renderWatching();
 
-  // Keep the default assistant welcome message defined in the HTML.
-  // Do not overwrite it during init.
+  // Boot confirmation in chat
+  const chatWindow = document.getElementById('chatWindow');
+  chatWindow.innerHTML = `<div class="msg ai">
+    <div class="msg-avatar">🤖</div>
+    <div class="msg-bubble"><strong>App rendered ✓</strong>  Storage initialized ✓  Ready to upload CSV ✓
+
+Library loaded: <strong>${library.length} titles</strong> — ${library.filter(x=>x.status==='Watching').length} watching, ${library.filter(x=>x.status==='Watchlist').length} in queue.
+
+${library.length === 0 ? 'Your library is empty — head to the Upload tab to import a CSV, or just start chatting and I\'ll help you build it up!' : 'What are we doing today? Hit a quick action or ask me anything.'}
+    </div>
+  </div>`;
 }
 
   init();
@@ -3569,64 +2491,6 @@ function setCachedTone(title, tone) {
   if (!tone) return;
   localStorage.setItem(getToneCacheKey(title), tone);
 }
-
-function filterLibraryByReply(reply) {
-  let items = [...library];
-
-  const hasWatched = reply.includes('watched');
-  const hasWatching = reply.includes('watching');
-  const hasAbandoned = reply.includes('abandoned');
-  const hasWatchlist = reply.includes('watchlist') || reply.includes('queue');
-
-  if (hasWatched) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watched');
-  } else if (hasWatching) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watching');
-  } else if (hasAbandoned) {
-    items = items.filter(item => item.status?.toLowerCase() === 'abandoned');
-  } else if (hasWatchlist) {
-    items = items.filter(item => item.status?.toLowerCase() === 'watchlist');
-  }
-
-  if (reply.includes('movie')) {
-    items = items.filter(item => item.format?.toLowerCase() === 'movie');
-  } else if (
-    reply.includes('series') ||
-    reply.includes('show') ||
-    reply.includes('shows')
-  ) {
-    items = items.filter(item => {
-      const f = item.format?.toLowerCase();
-      return f === 'series' || f === 'miniseries';
-    });
-  }
-
-  const genreWords = ['drama', 'sci-fi', 'comedy', 'horror', 'thriller', 'romance', 'mystery', 'crime', 'fantasy', 'documentary'];
-  const matchedGenre = genreWords.find(g => reply.includes(g));
-
-  if (matchedGenre) {
-    items = items.filter(item => {
-      const genre = (item.genre || item.primary_genre || '').toLowerCase();
-      const sub = (item.subgenres || item.subGenres || '').toLowerCase();
-      return genre.includes(matchedGenre) || sub.includes(matchedGenre);
-    });
-  }
-
-  if (reply.includes('duplicate')) {
-  const seen = new Map();
-
-  items = items.filter(item => {
-    const key = item.title.toLowerCase();
-    if (seen.has(key)) {
-      return true; // this is a duplicate
-    } else {
-      seen.set(key, true);
-      return false;
-    }
-  });
-}
-  return items;
-}  
   
 </script>
 
