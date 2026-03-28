@@ -2063,7 +2063,7 @@ async function sendMessage(userText) {
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
 
   // A1: Clear stale pending states when user starts a new unrelated command
-  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation;
+  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup;
   if (hasPendingState) {
     const isContinuation = /^(yes|y|ok|okay|confirm|no|n|cancel|add|search|update|[1-5])$/.test(reply);
     if (!isContinuation) {
@@ -2432,8 +2432,8 @@ if (mergeSpecificMatch && !/^merge\s+duplicates?$/i.test(reply)) {
   return;
 }
 
-// Global dedup: "remove duplicates" / "merge duplicates" / "merge" alone
-if (/^(remove|delete)\s+duplicates?$/i.test(reply) || /^merge\s+duplicates?$/i.test(reply) || reply === 'merge') {
+// Global dedup: "remove/find/show/list/check/merge duplicates" or "merge" alone
+if (/^(remove|delete|find|show|list|check|merge)\s+duplicates?$/i.test(reply) || reply === 'merge') {
   const counts = {};
   for (const item of library) {
     const key = (item.title || '').toLowerCase();
@@ -2459,7 +2459,7 @@ if (/^(remove|delete)\s+duplicates?$/i.test(reply) || /^merge\s+duplicates?$/i.t
   }).join('\n');
 
   pendingDedup = true;
-  addMsg('assistant', `I found duplicate titles:\n${list}\n\nMerge duplicates by keeping the best entry per title? (yes/no)`);
+  addMsg('assistant', `Duplicates found:\n${list}\n\nMerge? (yes/no)`);
   return;
 }
 
@@ -2730,7 +2730,59 @@ if (existing) {
     return;
   }
 
+// ============================================================
+// A5: [title] = [value] — local field assignment (no AI needed)
+// ============================================================
+const eqMatch = userText.match(/^(.+?)\s*=\s*(.+)$/i);
+if (eqMatch) {
+  const rawTitle = eqMatch[1].trim();
+  const rawValue = eqMatch[2].trim();
+  const valLower = rawValue.toLowerCase();
+
+  // Map value to a known field + normalized value
+  let field = null, normalizedValue = null;
+
+  // Status
+  if (['watching','currently watching'].includes(valLower))       { field = 'status'; normalizedValue = 'Watching'; }
+  else if (['watched','done','finished','complete','completed'].includes(valLower)) { field = 'status'; normalizedValue = 'Watched'; }
+  else if (['abandoned','dropped','quit'].includes(valLower))     { field = 'status'; normalizedValue = 'Abandoned'; }
+  else if (['watchlist','to watch','queue'].includes(valLower))   { field = 'status'; normalizedValue = 'Watchlist'; }
+  // Platform
+  else if (['netflix'].includes(valLower))                        { field = 'platform'; normalizedValue = 'Netflix'; }
+  else if (['prime','amazon','amazon prime','prime video'].includes(valLower)) { field = 'platform'; normalizedValue = 'Prime'; }
+  else if (['crave'].includes(valLower))                          { field = 'platform'; normalizedValue = 'Crave'; }
+  else if (['disney','disney+','disney plus'].includes(valLower)) { field = 'platform'; normalizedValue = 'Disney'; }
+  else if (['apple tv','apple tv+','apple'].includes(valLower))   { field = 'platform'; normalizedValue = 'Apple TV'; }
+  // Format
+  else if (['series','show','tv show','tv'].includes(valLower))   { field = 'format'; normalizedValue = 'Series'; }
+  else if (['movie','film'].includes(valLower))                   { field = 'format'; normalizedValue = 'Movie'; }
+  else if (['documentary','doc'].includes(valLower))              { field = 'format'; normalizedValue = 'Documentary'; }
+
+  if (field) {
+    // Resolve best library match — prefer higher status rank + metadata score when dupes exist
+    const candidates = library.filter(i => (i.title || '').toLowerCase() === rawTitle.toLowerCase());
+    let target = candidates.length > 0
+      ? candidates.sort((a, b) => {
+          const d = getStatusRank(b.status) - getStatusRank(a.status);
+          return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
+        })[0]
+      : resolveLibraryTitle(rawTitle);
+
+    if (!target) {
+      addMsg('assistant', `❌ "${rawTitle}" not found in your library.`);
+      return;
+    }
+
+    const oldValue = target[field];
+    target[field] = normalizedValue;
+    saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+    addMsg('assistant', `✅ ${target.title} — ${field}: ${normalizedValue}${oldValue && oldValue !== normalizedValue ? ` (was: ${oldValue})` : ''}`);
+    return;
+  }
+}
+
     // 🧠 Fallback to AI if no command matched
+
   // pendingAIConfirmation handler
   let confirmOverride = '';
   // A4: If user types a new command while confirmation is pending, break out
