@@ -756,6 +756,7 @@ let pendingSelection = null;
 let pendingUpdate = null;
 let pendingDuplicate = null;
 let pendingDelete = null;
+let pendingAutofill = null;      // B1: autofill diff/conflict state
 let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
 
 let api_key = localStorage.getItem("tmdb_api_key") || "";
@@ -1957,6 +1958,60 @@ updates.forEach(item => {
   }
 }
 
+// ============================================================
+// TMDB ENRICHMENT HELPER — shared by add flow + autofill (B2)
+// ============================================================
+async function enrichFromTMDb(selected) {
+  let endpoint = 'movie';
+  if (selected.media_type) {
+    endpoint = selected.media_type === 'tv' ? 'tv' : 'movie';
+  } else if (selected.first_air_date) {
+    endpoint = 'tv';
+  }
+  const key = getTMDbKey();
+  if (!key) return null;
+
+  const detailsRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`);
+  const details = await detailsRes.json();
+
+  let platform = '';
+  try {
+    const providerRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${key}`);
+    const providerData = await providerRes.json();
+    const ca = providerData.results?.CA;
+    if (ca?.flatrate?.length)      platform = normalizePlatform(ca.flatrate[0].provider_name);
+    else if (ca?.ads?.length)      platform = normalizePlatform(ca.ads[0].provider_name);
+    else if (ca?.rent?.length)     platform = normalizePlatform(ca.rent[0].provider_name);
+  } catch(e) { console.warn('Provider fetch failed:', e); }
+
+  const title  = details.name || details.title;
+  const year   = (details.first_air_date || details.release_date || '').split('-')[0];
+  let format   = 'Movie';
+  if (endpoint === 'tv') {
+    format = (details.number_of_seasons === 1 && details.status === 'Ended') ? 'Miniseries' : 'Series';
+  }
+
+  const genres = (details.genres?.map(g => g.name) || []);
+  const normalizedGenres = genres.map(g =>
+    (g === 'Science Fiction' || g === 'Sci-Fi & Fantasy') ? 'Sci-Fi' : g
+  );
+  let primary_genre = normalizedGenres[0] || '';
+  if (normalizedGenres.includes('Sci-Fi')) primary_genre = 'Sci-Fi';
+  const subgenres = normalizedGenres.filter(g => g !== primary_genre).join(', ');
+
+  const tone     = await detectToneAI(details, normalizedGenres);
+  const seasons  = endpoint === 'tv'    ? details.number_of_seasons : '';
+  const runtime  = endpoint === 'movie' ? details.runtime           : '';
+
+  let lifecycle = '';
+  if (endpoint === 'tv') {
+    if (details.status === 'Returning Series') lifecycle = 'Ongoing';
+    else if (details.status === 'Ended')       lifecycle = 'Finished';
+    else if (details.status === 'Canceled')    lifecycle = 'Cancelled';
+  }
+
+  return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year };
+}
 
 async function sendMessage(userText) {
   if (!userText.trim()) return;
@@ -1976,7 +2031,7 @@ async function sendMessage(userText) {
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
 
   // A1: Clear stale pending states when user starts a new unrelated command
-  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate;
+  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill;
   if (hasPendingState) {
     const isContinuation = /^(yes|y|ok|okay|confirm|no|n|cancel|add|search|update|[1-5])$/.test(reply);
     if (!isContinuation) {
@@ -1984,6 +2039,7 @@ async function sendMessage(userText) {
       pendingDuplicate = null;
       pendingDelete = null;
       pendingUpdate = null;
+      pendingAutofill = null;
       console.log("A1: Cleared stale pending states — new command detected");
     }
   }
@@ -2075,7 +2131,29 @@ if (pendingDelete) {
   addMsg('assistant', 'Please reply yes or no 🙂');
   return;
 }
-  
+
+// ============================================================
+// PENDING AUTOFILL HANDLER (B1)
+// ============================================================
+if (pendingAutofill) {
+  if (['yes','y','ok','okay'].includes(reply)) {
+    for (const { field, tmdb } of pendingAutofill.conflicts) {
+      pendingAutofill.item[field] = tmdb;
+    }
+    saveLibrary(); updateStats(); refreshSearch();
+    addMsg('assistant', `✅ Applied ${pendingAutofill.conflicts.length} TMDb update(s).`);
+    pendingAutofill = null;
+    return;
+  }
+  if (['no','n','cancel'].includes(reply)) {
+    pendingAutofill = null;
+    addMsg('assistant', '✅ Kept your existing values. Only empty fields were filled.');
+    return;
+  }
+  addMsg('assistant', 'Apply TMDb values for the conflicts above? (yes/no)');
+  return;
+}
+
   if (pendingSelection && pendingSelection.results) {
     const choice = parseInt(userText.trim(), 10);
 
@@ -2206,15 +2284,39 @@ const newItem = {
       return;
     }
 
+    if (['no','n','cancel'].includes(reply)) {
+      pendingSelection = null;
+      addMsg('assistant', '❌ Cancelled.');
+      return;
+    }
+
     addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
     return;
   }
 
 if (reply.startsWith('delete') || reply.startsWith('remove')) {
 
-  const title = userText.replace(/^(delete|remove)\s+/i, '').trim();
+  // Strip year hint from delete query (e.g. "delete invasion 2005" → title="invasion", yearHint="2005")
+  const rawDeleteTitle = userText.replace(/^(delete|remove)\s+/i, '').trim();
+  const delYearMatch = rawDeleteTitle.match(/\b((?:19|20)\d{2})\b/);
+  const delYearHint = delYearMatch ? delYearMatch[1] : null;
+  const title = delYearHint ? rawDeleteTitle.replace(delYearHint, '').trim() : rawDeleteTitle;
 
-const match = resolveLibraryTitle(title);
+let match = resolveLibraryTitle(title);
+
+// Fallback: substring search (handles extra words)
+if (!match.item) {
+  let inner = library.find(item => title.toLowerCase().includes(item.title.toLowerCase()));
+  // If year hint, prefer a match where years align
+  if (delYearHint) {
+    const yearMatch2 = library.find(item =>
+      title.toLowerCase().includes(item.title.toLowerCase()) && String(item.year) === delYearHint
+    );
+    if (yearMatch2) inner = yearMatch2;
+  }
+  if (inner) match = { item: inner, fuzzy: false };
+}
+
 const existing = match.item;
 
 if (!existing) {
@@ -2271,11 +2373,10 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   }
 
   if (!match.item) {
-    addMsg('assistant', `❌ "${checkTitle}" not found in your library.`);
-    return;
-  }
+    // No library match — fall through to AI (handles conversational "check tmdb...", "check if..." etc.)
+  } else {
   const item = match.item;
-  let display = match.fuzzy ? `Closest match for "${checkTitle}":\n\n` : '';
+  let display = match.fuzzy ? `Closest match for \"${checkTitle}\":\n\n` : '';
   display += `Title: ${item.title}`;
   if (item.format)        display += `\nFormat: ${item.format}`;
   if (item.status)        display += `\nStatus: ${item.status}`;
@@ -2292,16 +2393,104 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   lastDiscussedTitle = item.title;  // A3
   addMsg('assistant', display);
   return;
+  } // end else (library match found)
 }
 
-  
+// ============================================================
+// AUTOFILL COMMAND HANDLER (B1/B2)
+// Usage: "autofill [title]" or "fill [title]"
+// ============================================================
+if (reply.startsWith('autofill ') || reply.startsWith('fill ')) {
+  const rawFillTitle = userText.replace(/^(autofill|fill)\s+/i, '').trim();
+  let fillMatch = resolveLibraryTitle(rawFillTitle);
+  if (!fillMatch.item) {
+    const inner = library.find(i => rawFillTitle.toLowerCase().includes(i.title.toLowerCase()));
+    if (inner) fillMatch = { item: inner, fuzzy: false };
+  }
+  if (!fillMatch.item) {
+    addMsg('assistant', `❌ "${rawFillTitle}" not found in your library.`);
+    return;
+  }
+  const libItem = fillMatch.item;
+  lastDiscussedTitle = libItem.title;
+
+  addTyping();
+  const afTmdbData = await fetchTMDbData(libItem.title);
+  if (!afTmdbData?.results?.length) {
+    removeTyping();
+    addMsg('assistant', `❌ Couldn't find "${libItem.title}" on TMDb.`);
+    return;
+  }
+
+  // Best match: prefer exact title + year alignment
+  let afBest = afTmdbData.results[0];
+  if (libItem.year) {
+    const yearExact = afTmdbData.results.find(r =>
+      (r.title || r.name || '').toLowerCase() === libItem.title.toLowerCase() &&
+      (r.release_date || r.first_air_date || '').startsWith(String(libItem.year))
+    );
+    if (yearExact) afBest = yearExact;
+  }
+
+  const enriched = await enrichFromTMDb(afBest);
+  removeTyping();
+  if (!enriched) { addMsg('assistant', '❌ Could not fetch TMDb details.'); return; }
+
+  // Field-by-field comparison
+  const AF_FIELDS = ['format','primary_genre','subgenres','tone','platform','lifecycle','year','seasons','runtime'];
+  const filled = [], conflicts = [], unchanged = [];
+  for (const field of AF_FIELDS) {
+    const cur = libItem[field];
+    const tmdb = enriched[field];
+    if (tmdb === '' || tmdb === null || tmdb === undefined) continue;
+    if (!cur && cur !== 0) {
+      filled.push({ field, value: tmdb });
+    } else if (String(cur).toLowerCase().trim() !== String(tmdb).toLowerCase().trim()) {
+      conflicts.push({ field, current: cur, tmdb });
+    } else {
+      unchanged.push(field);
+    }
+  }
+
+  // Auto-apply fills (empty fields only)
+  for (const { field, value } of filled) libItem[field] = value;
+  if (filled.length > 0) { saveLibrary(); updateStats(); refreshSearch(); }
+
+  // Build result display
+  let afDisplay = `📊 Autofill for "${enriched.title || libItem.title}":\n`;
+  if (filled.length > 0) {
+    afDisplay += `\n✅ Filled ${filled.length} empty field(s):\n`;
+    for (const { field, value } of filled) afDisplay += `  ${field}: ${value}\n`;
+  }
+  if (conflicts.length > 0) {
+    afDisplay += `\n⚠️ Conflicts (library → TMDb):\n`;
+    for (const { field, current, tmdb } of conflicts) {
+      afDisplay += `  ${field}: "${current}" → "${tmdb}"\n`;
+    }
+    afDisplay += `\nApply TMDb values for conflicts? (yes/no)`;
+    pendingAutofill = { item: libItem, conflicts };
+  } else if (filled.length > 0) {
+    afDisplay += `\n✓ No conflicts — all done.`;
+  } else {
+    afDisplay += `\n✓ No changes needed — metadata looks complete.`;
+  }
+  if (unchanged.length > 0) afDisplay += `\n\n(Already set: ${unchanged.join(', ')})`;
+
+  addMsg('assistant', afDisplay);
+  return;
+}
+
   const FIELD_NAMES = ['subgenres','subgenre','genre','platform','tone','status','format','lifecycle','progress','year','notes','seasons','runtime','imdb'];
   const afterAdd = reply.replace(/^add\s+/i, '').trim();
   if (reply.startsWith('add') && !FIELD_NAMES.some(f => afterAdd.startsWith(f))) {
     console.log("ADD BLOCK HIT");
     
-    const cleanTitle = userText.replace(/^add\s+/i, '').trim();
-    console.log("CLEAN TITLE:", cleanTitle);
+    // Strip year hint from title (e.g. "add invasion 2021" → title="invasion", yearHint="2021")
+    const rawAddTitle = userText.replace(/^add\s+/i, '').trim();
+    const addYearMatch = rawAddTitle.match(/\b((?:19|20)\d{2})\b/);
+    const addYearHint = addYearMatch ? addYearMatch[1] : null;
+    const cleanTitle = addYearHint ? rawAddTitle.replace(addYearHint, '').trim() : rawAddTitle;
+    console.log("CLEAN TITLE:", cleanTitle, "YEAR HINT:", addYearHint);
 
 const existing = findByTitle(cleanTitle);
     console.log("EXISTING MATCH:", existing);
@@ -2330,11 +2519,29 @@ if (existing) {
       return;
     }
 
-    const results = tmdbData.results.slice(0, 5);
+    let results = tmdbData.results.slice(0, 5);
+
+    // If year hint given, sort matching year to top
+    if (addYearHint) {
+      results.sort((a, b) => {
+        const aYear = (a.release_date || a.first_air_date || '').split('-')[0];
+        const bYear = (b.release_date || b.first_air_date || '').split('-')[0];
+        return (bYear === addYearHint ? 1 : 0) - (aYear === addYearHint ? 1 : 0);
+      });
+    }
 
     if (results.length === 1) {
       pendingSelection = { results };
       return sendMessage('1');
+    }
+
+    // If year hint and top result matches — auto-select it
+    if (addYearHint) {
+      const topYear = (results[0].release_date || results[0].first_air_date || '').split('-')[0];
+      if (topYear === addYearHint) {
+        pendingSelection = { results };
+        return sendMessage('1');
+      }
     }
 
     pendingSelection = { results };
