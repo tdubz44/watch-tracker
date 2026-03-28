@@ -1877,11 +1877,6 @@ JSON>>>
 
 If no data changes are needed, do NOT output a JSON block.
 
-CONFIRMATION RULE (CRITICAL):
-- If your response contains "Confirm add?", "Confirm update?", or any confirmation prompt, that message MUST NOT contain a <<<JSON>>> block.
-- Wait for the user to say yes/y/ok FIRST, then in your NEXT message output the <<<JSON>>> block.
-- Never include JSON and a confirmation prompt in the same message.
-
 CORRECTION HANDLING:
 - If the user says "incorrect", "wrong", "that's not right", "undo", "revert", or similar after an update:
   - DO NOT ask "which title and field?" — use conversation context to know what was just changed
