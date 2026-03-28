@@ -757,6 +757,7 @@ let pendingUpdate = null;
 let pendingDuplicate = null;
 let pendingDelete = null;
 let pendingAutofill = null;      // B1: autofill diff/conflict state
+let pendingDedup = null;         // dedup confirmation state
 let pendingAIConfirmation = false; // tracks when AI asked "Confirm?" but user hasn't responded yet
 let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
 
@@ -1963,6 +1964,33 @@ updates.forEach(item => {
 }
 
 // ============================================================
+// MERGE HELPERS (ported from original)
+// ============================================================
+function getStatusRank(status) {
+  const s = (status || '').toLowerCase();
+  if (s === 'watched')   return 4;
+  if (s === 'watching')  return 3;
+  if (s === 'abandoned') return 2;
+  if (s === 'watchlist') return 1;
+  return 0;
+}
+
+function getMetadataScore(item) {
+  let score = 0;
+  if (item.format)                    score++;
+  if (item.primary_genre || item.genre) score++;
+  if (item.subgenres || item.subGenres) score++;
+  if (item.tone)                      score++;
+  if (item.platform)                  score++;
+  if (item.lifecycle)                 score++;
+  if (item.year)                      score++;
+  if (item.runtime)                   score++;
+  if (item.seasons)                   score++;
+  if (item.imdbid)                    score++;
+  return score;
+}
+
+// ============================================================
 // TMDB ENRICHMENT HELPER — shared by add flow + autofill (B2)
 // ============================================================
 async function enrichFromTMDb(selected) {
@@ -2044,6 +2072,7 @@ async function sendMessage(userText) {
       pendingDelete = null;
       pendingUpdate = null;
       pendingAutofill = null;
+      pendingDedup = null;
       pendingAIConfirmation = false;
       console.log("A1: Cleared stale pending states — new command detected");
     }
@@ -2110,6 +2139,68 @@ if (pendingDuplicate) {
   addMsg('assistant', 'Please reply yes or no 🙂');
   return;
 }
+
+// ============================================================
+// PENDING DEDUP HANDLER
+// ============================================================
+if (pendingDedup) {
+  if (['yes','y','ok','okay','confirm','merge'].includes(reply)) {
+    const scope = typeof pendingDedup === 'object' ? pendingDedup.scope : null;
+    let removed = 0;
+
+    if (scope) {
+      // Title-specific merge
+      const toMerge = library.filter(i => (i.title || '').toLowerCase() === scope);
+      const keep    = library.filter(i => (i.title || '').toLowerCase() !== scope);
+      if (toMerge.length < 2) {
+        pendingDedup = false;
+        addMsg('assistant', '✨ No duplicates to merge.');
+        return;
+      }
+      const sorted = [...toMerge].sort((a, b) => {
+        const d = getStatusRank(b.status) - getStatusRank(a.status);
+        return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
+      });
+      library = [...keep, sorted[0]];
+      removed = toMerge.length - 1;
+    } else {
+      // Global dedup
+      const grouped = new Map();
+      for (const item of library) {
+        const key = (item.title || '').toLowerCase();
+        if (!key) continue;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(item);
+      }
+      const mergedLibrary = [];
+      for (const [, items] of grouped) {
+        if (items.length === 1) { mergedLibrary.push(items[0]); continue; }
+        const sorted = [...items].sort((a, b) => {
+          const d = getStatusRank(b.status) - getStatusRank(a.status);
+          return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
+        });
+        mergedLibrary.push(sorted[0]);
+        removed += items.length - 1;
+      }
+      library = mergedLibrary;
+    }
+
+    saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+    pendingDedup = false;
+    addMsg('assistant', removed === 0
+      ? '✨ No duplicates found to merge.'
+      : `✅ Removed ${removed} duplicate entr${removed === 1 ? 'y' : 'ies'}.`);
+    return;
+  }
+  if (['no','n','cancel'].includes(reply)) {
+    pendingDedup = false;
+    addMsg('assistant', '👍 Okay, not merging duplicates.');
+    return;
+  }
+  addMsg('assistant', 'Merge duplicates as listed above? (yes/no)');
+  return;
+}
+
 
 if (pendingDelete) {
 
@@ -2298,6 +2389,79 @@ const newItem = {
     addMsg('assistant', `Please enter a number between 1 and ${pendingSelection.results.length}`);
     return;
   }
+
+// ============================================================
+// REMOVE DUPLICATES COMMAND — local analysis + rich display
+// ============================================================
+// Title-specific merge: "merge [title]"
+const mergeSpecificMatch = reply.match(/^merge\s+(.+)$/i);
+if (mergeSpecificMatch && !/^merge\s+duplicates?$/i.test(reply)) {
+  const titleQuery = mergeSpecificMatch[1].trim();
+  const key = titleQuery.toLowerCase();
+  const matching = library.filter(i => (i.title || '').toLowerCase() === key);
+  if (!matching.length) {
+    // Try fuzzy
+    const fuzzy = library.filter(i => (i.title || '').toLowerCase().includes(key));
+    if (!fuzzy.length) {
+      addMsg('assistant', `\u274c "${titleQuery}" not found in your library.`);
+      return;
+    }
+    // Use the fuzzy key from first match
+    const fuzzyKey = (fuzzy[0].title || '').toLowerCase();
+    const fuzzyMatching = library.filter(i => (i.title || '').toLowerCase() === fuzzyKey);
+    if (fuzzyMatching.length < 2) {
+      addMsg('assistant', `\u2728 No duplicates found for "${fuzzy[0].title}".`);
+      return;
+    }
+    const formats  = [...new Set(fuzzyMatching.map(i => i.format).filter(Boolean))];
+    const years    = [...new Set(fuzzyMatching.map(i => i.year).filter(Boolean))];
+    const statuses = [...new Set(fuzzyMatching.map(i => i.status).filter(Boolean))];
+    pendingDedup = { scope: fuzzyKey };
+    addMsg('assistant', `Found ${fuzzyMatching.length} entries for "${fuzzy[0].title}":\n  Format: ${formats.join(', ') || 'Unknown'}\n  Year: ${years.join(', ') || 'Unknown'}\n  Status: ${statuses.join(', ') || 'Unknown'}\n\nMerge and keep the best entry? (yes/no)`);
+    return;
+  }
+  if (matching.length < 2) {
+    addMsg('assistant', `\u2728 No duplicates found for "${matching[0].title}".`);
+    return;
+  }
+  const formats  = [...new Set(matching.map(i => i.format).filter(Boolean))];
+  const years    = [...new Set(matching.map(i => i.year).filter(Boolean))];
+  const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
+  pendingDedup = { scope: key };
+  addMsg('assistant', `Found ${matching.length} entries for "${matching[0].title}":\n  Format: ${formats.join(', ') || 'Unknown'}\n  Year: ${years.join(', ') || 'Unknown'}\n  Status: ${statuses.join(', ') || 'Unknown'}\n\nMerge and keep the best entry? (yes/no)`);
+  return;
+}
+
+// Global dedup: "remove duplicates" / "merge duplicates" / "merge" alone
+if (/^(remove|delete)\s+duplicates?$/i.test(reply) || /^merge\s+duplicates?$/i.test(reply) || reply === 'merge') {
+  const counts = {};
+  for (const item of library) {
+    const key = (item.title || '').toLowerCase();
+    if (!key) continue;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  const duplicates = Object.entries(counts)
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (!duplicates.length) {
+    addMsg('assistant', '\u2728 No duplicate titles found.');
+    return;
+  }
+
+  const list = duplicates.map(([titleKey, count]) => {
+    const matching = library.filter(i => (i.title || '').toLowerCase() === titleKey);
+    const formats  = [...new Set(matching.map(i => i.format).filter(Boolean))];
+    const years    = [...new Set(matching.map(i => i.year).filter(Boolean))];
+    const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
+    const label    = titleKey.replace(/\b\w/g, c => c.toUpperCase());
+    return `\u2022 ${label} \u00d7${count}\n    Format: ${formats.join(', ') || 'Unknown'}\n    Year: ${years.join(', ') || 'Unknown'}\n    Status: ${statuses.join(', ') || 'Unknown'}`;
+  }).join('\n');
+
+  pendingDedup = true;
+  addMsg('assistant', `I found duplicate titles:\n${list}\n\nMerge duplicates by keeping the best entry per title? (yes/no)`);
+  return;
+}
 
 // Guard: don't treat known non-title keywords as delete targets — fall through to AI
 const NON_TITLE_REMOVE = ['duplicates','duplicate','all','everything','library','all titles'];
@@ -2569,6 +2733,12 @@ if (existing) {
     // 🧠 Fallback to AI if no command matched
   // pendingAIConfirmation handler
   let confirmOverride = '';
+  // A4: If user types a new command while confirmation is pending, break out
+  if (pendingAIConfirmation && /^(merge|remove|delete|add|autofill|update|check|show|list|find|recommend|dedup|clear)\b/i.test(reply)) {
+    pendingAIConfirmation = false;
+    // fall through to normal command handlers below
+  }
+
   if (pendingAIConfirmation) {
     if (['no','n','cancel'].includes(reply)) {
       pendingAIConfirmation = false;
