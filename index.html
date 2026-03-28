@@ -756,6 +756,7 @@ let pendingSelection = null;
 let pendingUpdate = null;
 let pendingDuplicate = null;
 let pendingDelete = null;
+let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
 
 let api_key = localStorage.getItem("tmdb_api_key") || "";
   
@@ -1963,7 +1964,24 @@ async function sendMessage(userText) {
         pendingDuplicate,
         pendingUpdate
       });
-  
+
+  // A3: Scan userText for any library title that's explicitly mentioned
+  const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
+  if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
+
+  // A1: Clear stale pending states when user starts a new unrelated command
+  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate;
+  if (hasPendingState) {
+    const isContinuation = /^(yes|y|ok|okay|confirm|no|n|cancel|add|search|update|[1-5])$/.test(reply);
+    if (!isContinuation) {
+      pendingSelection = null;
+      pendingDuplicate = null;
+      pendingDelete = null;
+      pendingUpdate = null;
+      console.log("A1: Cleared stale pending states — new command detected");
+    }
+  }
+
   if (pendingSelection && pendingSelection.newItem) {
     if (['yes','y','ok','okay','confirm','add'].includes(reply)) {
       library.push(pendingSelection.newItem);
@@ -2210,10 +2228,12 @@ if (match.fuzzy) {
   if (existing.status) display += `\nStatus: ${existing.status}`;
   display += `\n\nRemove this title instead? (yes/no)`;
 
+  lastDiscussedTitle = existing.title;  // A3
   addMsg('assistant', display);
   return;
 }
 
+  lastDiscussedTitle = existing.title;  // A3
   pendingDelete = existing;
 
 let display = `Are you sure you want to remove:\n\n`;
@@ -2256,6 +2276,7 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   if (item.progress)      display += `\nProgress: ${item.progress}`;
   if (item.notes)         display += `\nNotes: ${item.notes}`;
   if (item.date_watched)  display += `\nDate watched: ${item.date_watched}`;
+  lastDiscussedTitle = item.title;  // A3
   addMsg('assistant', display);
   return;
 }
@@ -2323,11 +2344,14 @@ if (existing) {
     addTyping();
 
     const libraryContext = buildLibraryContext();
-    const userMsgWithContext = `${libraryContext}\n\n---\nUSER MESSAGE:\n${userText}`;
+    const contextNote = lastDiscussedTitle
+      ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
+      : '';
+    const userMsgWithContext = `${libraryContext}${contextNote}\n\n---\nUSER MESSAGE:\n${userText}`;
   
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...convoHistory.slice(-12),
+      ...convoHistory,
       { role: "user", content: userMsgWithContext }
     ];
   
@@ -2545,3 +2569,4 @@ if ('serviceWorker' in navigator) {
 
 </body>
 </html>
+
