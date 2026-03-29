@@ -3162,23 +3162,6 @@ Output your answer conversationally.`;
         }
       }
 
-      // A1: Clear stale pending states when user starts a new unrelated command
-      const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup || pendingPlatformConfirmation;
-      if (hasPendingState) {
-        const isContinuation = /^(yes|y|ok|okay|confirm|sure|yep|yeah|yea|ya|no|n|cancel|nope|add|search|update|merge|[1-5])$/i.test(reply.trim());
-        if (!isContinuation) {
-          pendingSelection = null;
-          pendingDuplicate = null;
-          pendingDelete = null;
-          pendingUpdate = null;
-          pendingAutofill = null;
-          pendingDedup = null;
-          pendingPlatformConfirmation = null;
-          pendingAIConfirmation = false;
-          console.log("A1: Cleared stale pending states — new command detected");
-        }
-      }
-
       // Intercept assignment: "invasion = watching" OR "progress = s4e4"
       const assignMatch = userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
       if (assignMatch && !pendingAIConfirmation && !pendingUpdate) {
@@ -3431,125 +3414,134 @@ Output your answer conversationally.`;
           const key = getTMDbKey();
           if (!key) return;
 
-          const detailsRes = await fetch(
-            `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`
-          );
-          const details = await detailsRes.json();
-          console.log("TMDB DETAILS:", details);
-
-          let platform = "";
-
+          addTyping();
           try {
-            const providerRes = await fetch(
-              `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${key}`
+            const detailsRes = await fetch(
+              `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`
             );
-            const providerData = await providerRes.json();
+            const details = await detailsRes.json();
+            console.log("TMDB DETAILS:", details);
 
-            const ca = providerData.results?.CA;
+            let platform = "";
 
-            if (ca?.flatrate?.length) {
-              platform = normalizePlatform(ca.flatrate[0].provider_name);
-            } else if (ca?.ads?.length) {
-              platform = normalizePlatform(ca.ads[0].provider_name);
-            } else if (ca?.rent?.length) {
-              platform = normalizePlatform(ca.rent[0].provider_name);
+            try {
+              const providerRes = await fetch(
+                `https://api.themoviedb.org/3/${endpoint}/${selected.id}/watch/providers?api_key=${key}`
+              );
+              const providerData = await providerRes.json();
+
+              const ca = providerData.results?.CA;
+
+              if (ca?.flatrate?.length) {
+                platform = normalizePlatform(ca.flatrate[0].provider_name);
+              } else if (ca?.ads?.length) {
+                platform = normalizePlatform(ca.ads[0].provider_name);
+              } else if (ca?.rent?.length) {
+                platform = normalizePlatform(ca.rent[0].provider_name);
+              }
+
+            } catch (e) {
+              console.warn("Provider fetch failed:", e);
             }
 
-          } catch (e) {
-            console.warn("Provider fetch failed:", e);
+            const title = details.name || details.title;
+            const year = (details.first_air_date || details.release_date || '').split('-')[0];
+
+            let type = "Movie";
+            if (endpoint === "tv") {
+              type = (details.number_of_seasons === 1 && details.status === "Ended")
+                ? "Miniseries"
+                : "Series";
+            }
+
+            // GENRE LOGIC HERE
+            const genres = (details.genres?.map(g => g.name) || []);
+
+            // 🎯 Normalize names
+            const normalizedGenres = genres.map(g =>
+              g === "Science Fiction" || g === "Sci-Fi & Fantasy" ? "Sci-Fi" : g
+            );
+
+            // 🎯 Force Sci-Fi to be primary if present
+            let primaryGenre = normalizedGenres[0] || "";
+
+            if (normalizedGenres.includes("Sci-Fi")) {
+              primaryGenre = "Sci-Fi";
+            }
+
+            // 🎯 Remove primary from subgenres
+            const subGenres = normalizedGenres
+              .filter(g => g !== primaryGenre)
+              .join(', ');
+
+            const tone = await detectToneAI(details, normalizedGenres);
+            const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
+            const runtime = endpoint === 'movie' ? details.runtime : '';
+
+            // --- LIFECYCLE ---
+            let lifecycle = "";
+
+            if (endpoint === "tv") {
+              if (details.status === "Returning Series") lifecycle = "Ongoing";
+              else if (details.status === "Ended") lifecycle = "Finished";
+              else if (details.status === "Canceled") lifecycle = "Cancelled";
+            }
+
+            // --- STATUS ---
+            const status = "Watchlist";
+
+            // --- FINAL OBJECT ---
+            const newItem = {
+              title,
+              format: type,
+
+              // Genre (standardized field names)
+              primary_genre: primaryGenre,
+              subgenres: subGenres,
+              tone,
+
+              // Platform + lifecycle
+              platform,
+              lifecycle,
+
+              // Extras
+              seasons,
+              runtime,
+
+              // Core
+              year,
+              status
+            };
+
+            // Apply status hint if provided
+            if (statusHint) {
+              const statusMap = { 'watchlist': 'Watchlist', 'watched': 'Watched', 'watching': 'Watching', 'abandoned': 'Abandoned', 'dropped': 'Abandoned' };
+              newItem.status = statusMap[statusHint] || "Watchlist";
+            }
+
+            let display = `Title: ${title}`;
+            if (type) display += `\nFormat: ${type}`;
+            if (newItem.status) display += `\nStatus: ${newItem.status}`;
+            if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
+            if (subGenres) display += `\nSub-genres: ${subGenres}`;
+            if (tone) display += `\nTone: ${tone}`;
+            if (platform) display += `\nPlatform: ${platform}`;
+            if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
+            if (seasons) display += `\nSeasons: ${seasons}`;
+            if (runtime) display += `\nRuntime: ${runtime} min`;
+            if (year) display += `\nYear: ${year}`;
+            display += `\n\nConfirm add? (yes/no)`;
+
+            removeTyping();
+            addMsg('assistant', display);
+            pendingSelection.newItem = newItem;
+            return;
+          } catch (err) {
+            console.error("Picker fetch failed:", err);
+            removeTyping();
+            addMsg('assistant', "⚠️ Failed to fetch details for that selection. Please try again or pick a different number.");
+            return;
           }
-
-          const title = details.name || details.title;
-          const year = (details.first_air_date || details.release_date || '').split('-')[0];
-
-          let type = "Movie";
-          if (endpoint === "tv") {
-            type = (details.number_of_seasons === 1 && details.status === "Ended")
-              ? "Miniseries"
-              : "Series";
-          }
-
-          // GENRE LOGIC HERE
-          const genres = (details.genres?.map(g => g.name) || []);
-
-          // 🎯 Normalize names
-          const normalizedGenres = genres.map(g =>
-            g === "Science Fiction" || g === "Sci-Fi & Fantasy" ? "Sci-Fi" : g
-          );
-
-          // 🎯 Force Sci-Fi to be primary if present
-          let primaryGenre = normalizedGenres[0] || "";
-
-          if (normalizedGenres.includes("Sci-Fi")) {
-            primaryGenre = "Sci-Fi";
-          }
-
-          // 🎯 Remove primary from subgenres
-          const subGenres = normalizedGenres
-            .filter(g => g !== primaryGenre)
-            .join(', ');
-
-          const tone = await detectToneAI(details, normalizedGenres);
-          const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
-          const runtime = endpoint === 'movie' ? details.runtime : '';
-
-          // --- LIFECYCLE ---
-          let lifecycle = "";
-
-          if (endpoint === "tv") {
-            if (details.status === "Returning Series") lifecycle = "Ongoing";
-            else if (details.status === "Ended") lifecycle = "Finished";
-            else if (details.status === "Canceled") lifecycle = "Cancelled";
-          }
-
-          // --- STATUS ---
-          const status = "Watchlist";
-
-          // --- FINAL OBJECT ---
-          const newItem = {
-            title,
-            format: type,
-
-            // Genre (standardized field names)
-            primary_genre: primaryGenre,
-            subgenres: subGenres,
-            tone,
-
-            // Platform + lifecycle
-            platform,
-            lifecycle,
-
-            // Extras
-            seasons,
-            runtime,
-
-            // Core
-            year,
-            status
-          };
-
-          // Apply status hint if provided
-          if (statusHint) {
-            const statusMap = { 'watchlist': 'Watchlist', 'watched': 'Watched', 'watching': 'Watching', 'abandoned': 'Abandoned', 'dropped': 'Abandoned' };
-            newItem.status = statusMap[statusHint] || "Watchlist";
-          }
-
-          let display = `Title: ${title}`;
-          if (type) display += `\nFormat: ${type}`;
-          if (newItem.status) display += `\nStatus: ${newItem.status}`;
-          if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
-          if (subGenres) display += `\nSub-genres: ${subGenres}`;
-          if (tone) display += `\nTone: ${tone}`;
-          if (platform) display += `\nPlatform: ${platform}`;
-          if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
-          if (seasons) display += `\nSeasons: ${seasons}`;
-          if (runtime) display += `\nRuntime: ${runtime} min`;
-          if (year) display += `\nYear: ${year}`;
-          display += `\n\nConfirm add? (yes/no)`;
-
-          addMsg('assistant', display);
-          pendingSelection.newItem = newItem;
-          return;
         }
 
         if (isNegative(reply)) {
@@ -3997,6 +3989,25 @@ Output your answer conversationally.`;
         }
       }
 
+      // A1: Clear stale pending states when starting a fresh/unrecognized command
+      const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup || pendingPlatformConfirmation;
+      if (hasPendingState) {
+        // If we got here, it means none of the handlers above (which check for yes/no/numbers) were triggered.
+        // We should clear the state unless it's a "known continuation" word we might have missed.
+        const isContinuation = /^(yes|y|ok|okay|confirm|sure|yep|yeah|yea|ya|no|n|cancel|nope|add|search|update|merge|\d+)$/i.test(reply.trim());
+        if (!isContinuation) {
+          pendingSelection = null;
+          pendingDuplicate = null;
+          pendingDelete = null;
+          pendingUpdate = null;
+          pendingAutofill = null;
+          pendingDedup = null;
+          pendingPlatformConfirmation = null;
+          pendingAIConfirmation = false;
+          console.log("A1: Cleared stale pending states — unrecognized command detected");
+        }
+      }
+
       // 🧠 Fallback to AI if no command matched
 
       // pendingAIConfirmation handler
@@ -4316,39 +4327,6 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
         if (key) localStorage.setItem("tmdb_api_key", key);
       }
       return key;
-    }
-
-    function normalizeGenre(rawInput) {
-      if (!rawInput) return { primary: '', sub: '' };
-      const genres = Array.isArray(rawInput) ? rawInput : rawInput.split(',').map(s => s.trim());
-      const normalized = genres.map(g => (g === "Science Fiction" || g === "Sci-Fi & Fantasy") ? "Sci-Fi" : g);
-      let primary = normalized[0] || "";
-      if (normalized.includes("Sci-Fi")) primary = "Sci-Fi";
-      const sub = normalized.filter(g => g !== primary).join(', ');
-      return { primary, sub };
-    }
-
-    function normalizePlatform(p) {
-      if (!p) return '';
-      const low = p.toLowerCase();
-      if (low.includes('apple')) return 'Apple TV';
-      if (low.includes('netflix')) return 'Netflix';
-      if (low.includes('prime') || low.includes('amazon')) return 'Prime';
-      if (low.includes('disney')) return 'Disney';
-      if (low.includes('crave')) return 'Crave';
-      return p.charAt(0).toUpperCase() + p.slice(1);
-    }
-
-    function isAffirmative(text) {
-      if (!text) return false;
-      const low = text.toLowerCase().trim();
-      return ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'].includes(low);
-    }
-
-    function isNegative(text) {
-      if (!text) return false;
-      const low = text.toLowerCase().trim();
-      return ['no', 'n', 'cancel', 'nope', 'negative'].includes(low);
     }
 
   </script>
