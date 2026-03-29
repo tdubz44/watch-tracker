@@ -1912,6 +1912,22 @@
         .trim();
     }
 
+    // ---- Tone Cache Helpers ----
+    function getCachedTone(title) {
+      try {
+        const cache = JSON.parse(localStorage.getItem('watchtracker_tone_cache') || '{}');
+        return cache[title.toLowerCase()] || null;
+      } catch (e) { return null; }
+    }
+
+    function setCachedTone(title, tone) {
+      try {
+        const cache = JSON.parse(localStorage.getItem('watchtracker_tone_cache') || '{}');
+        cache[title.toLowerCase()] = tone;
+        localStorage.setItem('watchtracker_tone_cache', JSON.stringify(cache));
+      } catch (e) { }
+    }
+
     function normalizePlatform(name) {
       if (!name) return '';
 
@@ -2127,17 +2143,6 @@
       if (!text) return false;
       const t = String(text).trim().toLowerCase();
       return ['no', 'n', 'cancel', 'nope', 'negative'].includes(t);
-    }
-
-    function normalizePlatform(p) {
-      if (!p) return '';
-      const low = p.toLowerCase();
-      if (low.includes('apple')) return 'Apple TV';
-      if (low.includes('netflix')) return 'Netflix';
-      if (low.includes('prime') || low.includes('amazon')) return 'Prime';
-      if (low.includes('disney')) return 'Disney';
-      if (low.includes('crave')) return 'Crave';
-      return p.charAt(0).toUpperCase() + p.slice(1);
     }
 
     function getBestCaseTitle(items) {
@@ -2986,21 +2991,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       }
     }
 
-    async function detectToneAI(details, genres) {
-      // Small helper to get tone suggestion from AI if we have a key
-      const key = localStorage.getItem("openai_api_key");
-      const cached = getCachedTone(details.name || details.title);
-      if (cached) return cached;
-      if (!key) return "";
 
-      const prompt = `Give me 1-3 concise tone descriptors for the show/movie "${details.name || details.title}" (${genres.join(', ')}). Summary: ${details.overview?.slice(0, 200)}... Output ONLY the descriptors, comma separated.`;
-      try {
-        const res = await callAssistant([{ role: "user", content: prompt }], key);
-        const tone = res.choices?.[0]?.message?.content?.trim();
-        if (tone) setCachedTone(details.name || details.title, tone);
-        return tone || "";
-      } catch (e) { return ""; }
-    }
 
     // ============================================================
     // TMDB ENRICHMENT HELPER — shared by add flow + autofill (B2)
@@ -3036,7 +3027,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       const rawGenres = (details.genres?.map(g => g.name) || []);
       const { primary: primary_genre, sub: subgenres } = normalizeGenre(rawGenres);
 
-      const tone = await detectToneAI(details, normalizedGenres);
+      const tone = await detectToneAI(details, rawGenres);
       const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
       const runtime = endpoint === 'movie' ? details.runtime : '';
 
@@ -4315,7 +4306,7 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
           "Authorization": "Bearer " + API_KEY
         },
         body: JSON.stringify({
-          model: "gpt-4.1-mini",
+          model: "gpt-4o-mini",
           messages: messages
         })
       });
@@ -4338,6 +4329,22 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
         if (key) localStorage.setItem("tmdb_api_key", key);
       }
       return key;
+    }
+
+    // ---- Tone Cache Helpers ----
+    function getCachedTone(title) {
+      try {
+        const cache = JSON.parse(localStorage.getItem('watchtracker_tone_cache') || '{}');
+        return cache[title.toLowerCase()] || null;
+      } catch (e) { return null; }
+    }
+
+    function setCachedTone(title, tone) {
+      try {
+        const cache = JSON.parse(localStorage.getItem('watchtracker_tone_cache') || '{}');
+        cache[title.toLowerCase()] = tone;
+        localStorage.setItem('watchtracker_tone_cache', JSON.stringify(cache));
+      } catch (e) { }
     }
 
   </script>
