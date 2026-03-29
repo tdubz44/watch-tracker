@@ -1954,11 +1954,7 @@ async function enrichItemFromTMDb(item) {
   return item;
 }
 
-async function normalizeProgressValue(item, newVal) {
-  if (!newVal || typeof newVal !== 'string') return newVal;
-
-  // New Pattern: S#E# or Season # Episode # (e.g. S4E4)
-  const exeyRegex = /(?:Season|S)\s*(\d+)\s*(?:Episode|E|e)\s*(\d+)/i;
+,ReplacementContent:  const exeyRegex = /(?:Season|S)\s*(\d+)\s*(?:Episode|E|e)\s*(\d+)/i;
   const exeyMatch = newVal.match(exeyRegex);
   
   // Standard Pattern: Season 2, S2, Season 2 (10/10), etc.
