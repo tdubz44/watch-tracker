@@ -1474,6 +1474,11 @@ return tone;
 // Migrates legacy field names on items loaded from old storage versions
 function normalizeLibrary() {
   library.forEach(item => {
+    // 🏆 The "Status Never Missing" Rule (Universal Backfill)
+    if (!item.status) {
+      item.status = item.progress ? 'Watching' : 'Watchlist';
+    }
+
     // Migrate legacy 'genre' → 'primary_genre'
     if (item.genre && !item.primary_genre) {
       item.primary_genre = item.genre;
@@ -1617,11 +1622,15 @@ if (lowerKey === 'genres' && value) {
 
 if (out.status) {
   const s = out.status.toLowerCase();
-
   if (s === 'watching') out.status = 'Watching';
   else if (s === 'watchlist') out.status = 'Watchlist';
   else if (s === 'watched') out.status = 'Watched';
   else if (s === 'abandoned') out.status = 'Abandoned';
+}
+
+// 🏆 CENTRAL SMART STATUS RULE
+if (out.progress && (!out.status || out.status === 'Watchlist')) {
+  out.status = 'Watching';
 }
   return out;
 }
@@ -1646,24 +1655,18 @@ async function applyUpdates(updates) {
         // --- G1: Async Progress Normalization ---
         if (normalized.progress) {
           normalized.progress = await normalizeProgressValue(existing, normalized.progress);
-          
-          // 🏆 Smart Status Flip: If we have progress, title should be "Watching"
-          if (!normalized.status && existing.status === 'Watchlist') {
-            normalized.status = 'Watching';
-          }
+        }
+        
+        // 🏆 Central Smart Status: if show was Watchlist and we now have progress
+        if (existing.status === 'Watchlist' && (normalized.progress || existing.progress) && !normalized.status) {
+          normalized.status = 'Watching'
         }
 
         Object.assign(existing, normalized);
         updated++;
       } else {
         // New item (even if action was 'update')
-        // 🏆 Smart Status Flip for new items
-        let status = normalized.status || 'Watchlist';
-        if (normalized.progress && status === 'Watchlist') {
-          status = 'Watching';
-        }
-
-        const newItem = { title: searchTitle, ...normalized, status };
+        const newItem = { title: searchTitle, ...normalized, status: normalized.status || 'Watchlist' };
 
         // 🔥 FETCH TMDB DATA if missing core fields
         if (!newItem.year || !newItem.primary_genre) {
@@ -1673,6 +1676,11 @@ async function applyUpdates(updates) {
         // --- G1: Async Progress Normalization ---
         if (newItem.progress) {
           newItem.progress = await normalizeProgressValue(newItem, newItem.progress);
+        }
+
+        // Re-check status for new item after potential TMDB/Normalization
+        if (newItem.progress && newItem.status === 'Watchlist') {
+          newItem.status = 'Watching';
         }
 
         library.push(newItem);
@@ -2158,7 +2166,10 @@ function getMetadataScore(item) {
 function generateMetadataPreview(item) {
   let display = `**${item.title}** (${item.year || '?'})`;
   if (item.format)        display += `\nFormat: ${item.format}`;
-  display += `\nStatus: ${item.status || 'Watchlist'}`; // Default to Watchlist for preview
+  
+  // 🏆 Always show status (Default to Watchlist if somehow still missing)
+  display += `\nStatus: ${item.status || 'Watchlist'}`; 
+  
   if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
   if (item.subgenres)     display += `\nSub-genres: ${item.subgenres}`;
   if (item.tone)          display += `\nTone: ${item.tone}`;
@@ -2426,6 +2437,11 @@ async function sendMessage(userText) {
          removeTyping();
        } else {
          targetItem[field] = val;
+       }
+
+       // Final Central Status Check
+       if (targetItem.progress && targetItem.status === 'Watchlist') {
+         targetItem.status = 'Watching';
        }
        
        saveLibrary(); updateStats(); refreshSearch(); renderWatching();
@@ -3312,6 +3328,11 @@ if (eqMatch) {
             if (update.progress) {
               itemProxy.progress = await normalizeProgressValue(itemProxy, update.progress);
               update.progress = itemProxy.progress; // sync back to the actual instruction
+            }
+            
+            // Apply central status rule to proxy for preview listing
+            if (itemProxy.progress && (!itemProxy.status || itemProxy.status === 'Watchlist')) {
+              itemProxy.status = 'Watching';
             }
             
             previewBlock += "\n\n" + generateMetadataPreview(itemProxy);
