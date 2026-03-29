@@ -811,10 +811,14 @@ normalizeLibrary();
         }
       } catch(e) {}
     }
-    // Backfill missing fields
+    // Universal Backfill & One-Time Sweeps
     library.forEach(item => {
       if (!('date_watched' in item)) item.date_watched = '';
     });
+    
+    // 🏆 UNIVERSAL NORMALIZATION (Sci-Fi, Tone, Status Integrity)
+    normalizeLibrary();
+    await saveLibrary();
   } catch(e) { library = []; }
   try {
     const convoResult = await window.storage.get(CONVO_KEY);
@@ -1477,33 +1481,28 @@ return tone;
 // Migrates legacy field names on items loaded from old storage versions
 function normalizeLibrary() {
   library.forEach(item => {
-    // 🏆 The "Status Never Missing" Rule (Universal Backfill)
+    // 🏆 The "Status Never Missing" Rule
     if (!item.status) {
       item.status = item.progress ? 'Watching' : 'Watchlist';
     } else {
-      const s = String(item.status).toLowerCase();
+      const s = String(item.status).toLowerCase().trim();
       if (s === 'watching') item.status = 'Watching';
       else if (s === 'watchlist') item.status = 'Watchlist';
       else if (s === 'watched') item.status = 'Watched';
       else if (s === 'abandoned') item.status = 'Abandoned';
     }
 
-    // 🏆 The Tone Beauty Sweep
-    if (item.tone) {
-      item.tone = titleCaseList(item.tone);
-    }
+    // 🏆 The Tone & Genre Beauty Sweep
+    if (item.tone) item.tone = titleCaseList(item.tone);
+    if (item.primary_genre) item.primary_genre = (item.primary_genre.toLowerCase() === 'science fiction') ? 'Sci-Fi' : item.primary_genre;
 
     // Migrate legacy 'genre' → 'primary_genre'
-    if (item.genre && !item.primary_genre) {
-      item.primary_genre = item.genre;
-    }
+    if (item.genre && !item.primary_genre) item.primary_genre = item.genre;
     if (!item.primary_genre) item.primary_genre = '';
     delete item.genre;
 
     // Migrate legacy camelCase 'subGenres' → 'subgenres'
-    if (item.subGenres && !item.subgenres) {
-      item.subgenres = item.subGenres;
-    }
+    if (item.subGenres && !item.subgenres) item.subgenres = item.subGenres;
     if (!item.subgenres) item.subgenres = '';
     delete item.subGenres;
   });
@@ -1602,10 +1601,11 @@ function titleCaseList(str) {
     .map(s => s.trim())
     .map(s => {
       if (!s) return '';
-      // Handle the 'Sci-Fi' special case
-      if (s.toLowerCase() === 'sci-fi' || s.toLowerCase() === 'science fiction') return 'Sci-Fi';
-      // Otherwise, pure Title Case
-      return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+      // Special case for 'Sci-Fi'
+      const low = s.toLowerCase();
+      if (low === 'sci-fi' || low === 'science fiction') return 'Sci-Fi';
+      // Robust Title Case: handles "mind-bending" -> "Mind-Bending"
+      return s.replace(/\b\w/g, c => c.toUpperCase());
     })
     .filter(Boolean)
     .join(', ');
@@ -2059,10 +2059,10 @@ RULES:
 - Never recommend Watched or Abandoned titles
 - Check duplicates before adding (use the ALL TITLES pipe-separated list)
 - Don't overwrite populated metadata fields
-- **NEVER** claim a change is "done", "applied", or "finished" unless you are outputting the <<<JSON>>> block in the same message.
-- You do NOT have direct access to the database; you ONLY have the ability to propose changes via JSON.
-- If a user asks for an update or a bulk change (e.g. "update progress fields"), you MUST provide the JSON for those changes and end with "Confirm?".
-- Confirm every proposed change.
+- **NEVER** output the word "Confirm?" or ask the user to confirm UNLESS you have included a <<<JSON>>> block for that specific change in the same message. 
+- You MUST output the JSON block for every Add, Update, or Delete request. 
+- **CRITICAL:** If a user says "update progress," you MUST generate a JSON block containing the specific season/episode updates for those titles before asking for confirmation.
+- You CANNOT say "Progress fields noted" without providing the actual data in JSON.
 - When the user requests to ADD or UPDATE a title:
   - DO NOT analyze taste profile UNLESS in SUGGESTION MODE.
   - DO NOT explain or justify the choice.
