@@ -1302,35 +1302,23 @@ function importRowsSilent(rows) {
   let added = 0, updated = 0, skipped = 0;
   const duplicates = [], badStatus = [], badFormat = [];
   for (const rawRow of rows) {
-    const row = normalizeRow(rawRow);
+    // 🏆 USE THE H1 NORMALIZER
+    const row = normalizeFields(rawRow);
     if (!row.title) { skipped++; continue; }
+    
     const existing = findByTitle(row.title);
-    if (row.status && !VALID_STATUSES.includes(row.status)) badStatus.push(`${row.title}: "${row.status}"`);
-    if (row.format && !VALID_FORMATS.includes(row.format)) badFormat.push(`${row.title}: "${row.format}"`);
     if (existing) {
       duplicates.push(row.title);
       let changed = false;
       for (const [k,v] of Object.entries(row)) {
-        if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
+        if (v && (existing[k] === undefined || existing[k] === '')) { 
+          existing[k] = v; 
+          changed = true; 
+        }
       }
       if (changed) updated++; else skipped++;
     } else {
-      library.push({
-        title: row.title,
-        status: VALID_STATUSES.includes(row.status) ? row.status : 'Watchlist',
-        format: VALID_FORMATS.includes(row.format) ? row.format : '',
-        primary_genre: row.primary_genre || '',
-        subgenres: row.subgenres || '',
-        tone: row.tone || '',
-        platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
-        lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
-        progress: row.progress || '',
-        year: row.year || '',
-        notes: row.notes || '',
-        date_watched: row.date_watched || '',
-        imdbid: row.imdb_id || '',
-        runtime: row.runtime || '',
-      });
+      library.push(row); // row is already fully normalized by normalizeFields
       added++;
     }
   }
@@ -1344,21 +1332,36 @@ function buildImportReport(result, total) {
   return report;
 }
 
-document.getElementById('applyJsonBtn').addEventListener('click', () => {
+document.getElementById('applyJsonBtn').addEventListener('click', async () => {
   const statusEl = document.getElementById('jsonApplyStatus');
   const raw = document.getElementById('jsonPaste').value.trim();
-  if (!raw) { statusEl.innerHTML = `<div class="status-msg status-err">Paste JSON first.</div>`; return; }
+  if (!raw) { statusEl.innerHTML = `<div class="status-msg status-err">Paste data first.</div>`; return; }
+  
   try {
-    const updates = JSON.parse(raw);
-    const result = applyUpdates(updates);
-    saveLibrary();
-    updateStats();
-    refreshSearch();
-    renderWatching();
-    statusEl.innerHTML = `<div class="status-msg status-ok">✅ Applied — ${result.added} added, ${result.updated} updated, ${result.skipped} skipped${result.skippedTitles && result.skippedTitles.length ? '<br><span style="font-size:11px;opacity:0.8">Skipped: ' + result.skippedTitles.join(', ') + '</span>' : ''}</div>`;
+    // 🏆 HYBRID PARSER: Handles single objects, arrays, or [{},{}] fragments
+    let data;
+    if (raw.startsWith('[') && raw.endsWith(']')) {
+      data = JSON.parse(raw);
+    } else if (raw.startsWith('{') && raw.endsWith('}')) {
+      // Could be one object or multiple {}{}{}
+      try {
+        data = JSON.parse(raw);
+        if (!Array.isArray(data)) data = [data];
+      } catch(e) {
+         // Try to wrap it if it's a fragment: {"a":1}{"b":2} -> [{"a":1},{"b":2}]
+         const wrapped = '[' + raw.replace(/}\s*{/g, '},{') + ']';
+         data = JSON.parse(wrapped);
+      }
+    } else {
+      throw new Error("Invalid format. Please paste a JSON object or array.");
+    }
+
+    const { added, updated, skipped, skippedTitles } = await applyUpdates(data);
+    saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+    statusEl.innerHTML = `<div class="status-msg status-ok">✅ Applied — ${added} added, ${updated} updated, ${skipped} skipped</div>`;
     document.getElementById('jsonPaste').value = '';
   } catch(e) {
-    statusEl.innerHTML = `<div class="status-msg status-err">❌ JSON error: ${esc(e.message)}</div>`;
+    statusEl.innerHTML = `<div class="status-msg status-err">❌ Error: ${esc(e.message)}</div>`;
   }
 });
 
@@ -2378,21 +2381,27 @@ async function sendMessage(userText) {
 
   addMsg('user', userText);
 
-  // 🏆 DIRECT JSON INTERCEPTOR (H1 Robustness)
-  // If the user pastes a JSON block with an assignment, handle it locally immediately.
-  const jsonMatch = userText.match(/^(?:add\s+)?["']?([^"=:]+?)["']?\s*[=:]\s*({[\s\S]+})$/i);
-  if (jsonMatch) {
-    const titleKey = jsonMatch[1].trim();
+  // 🏆 ROBUST DIRECT JSON INTERCEPTOR (H1 Robustness)
+  // Catch any JSON block { ... } at the end of a message and treat it as data.
+  const jsonBlockMatch = userText.match(/({[\s\S]+})$/);
+  if (jsonBlockMatch) {
+    const rawJson = jsonBlockMatch[1].trim();
+    const rawTitlePart = userText.replace(rawJson, '').trim();
+    // Clean-up title: remove "add", quotes, equals, or colon
+    const titleKey = rawTitlePart.replace(/^add\s+/i, '').replace(/^[=:]+|[=:]+$/g, '').replace(/^["']+|["']+$/g, '').trim() || lastDiscussedTitle;
+    
     try {
-      const data = JSON.parse(jsonMatch[2].trim());
-      addTyping();
-      const result = await applyUpdates([{ title: titleKey, action: 'add', ...data }]);
-      removeTyping();
-      
-      saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-      addMsg('assistant', `\u2705 Data applied to **${titleKey}**. (${result.added} added, ${result.updated} updated)`);
-      return;
-    } catch(e) { console.warn("Direct JSON parse failed, falling through to AI."); }
+      const data = JSON.parse(rawJson);
+      if (titleKey) {
+        addTyping();
+        const result = await applyUpdates([{ title: titleKey, action: 'add', ...data }]);
+        removeTyping();
+        
+        saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+        addMsg('assistant', `\u2705 Data applied to **${titleKey}**. (${result.added} added, ${result.updated} updated)`);
+        return;
+      }
+    } catch(e) { console.warn("JSON parse failed, falling through to AI."); }
   }
 
   const reply = userText.toLowerCase().trim();
