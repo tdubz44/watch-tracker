@@ -2377,15 +2377,26 @@ async function sendMessage(userText) {
   if (!userText.trim()) return;
 
   addMsg('user', userText);
-  const reply = userText.toLowerCase().trim();
-      console.log("STATE CHECK:", {
-        reply,
-        pendingSelection,
-        pendingDelete,
-        pendingDuplicate,
-        pendingUpdate
-      });
 
+  // 🏆 DIRECT JSON INTERCEPTOR (H1 Robustness)
+  // If the user pastes a JSON block with an assignment, handle it locally immediately.
+  const jsonMatch = userText.match(/^(?:add\s+)?["']?([^"=:]+?)["']?\s*[=:]\s*({[\s\S]+})$/i);
+  if (jsonMatch) {
+    const titleKey = jsonMatch[1].trim();
+    try {
+      const data = JSON.parse(jsonMatch[2].trim());
+      addTyping();
+      const result = await applyUpdates([{ title: titleKey, action: 'add', ...data }]);
+      removeTyping();
+      
+      saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+      addMsg('assistant', `\u2705 Data applied to **${titleKey}**. (${result.added} added, ${result.updated} updated)`);
+      return;
+    } catch(e) { console.warn("Direct JSON parse failed, falling through to AI."); }
+  }
+
+  const reply = userText.toLowerCase().trim();
+  
   // A3: Scan userText for any library title that's explicitly mentioned
   const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
