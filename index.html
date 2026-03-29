@@ -1646,13 +1646,24 @@ async function applyUpdates(updates) {
         // --- G1: Async Progress Normalization ---
         if (normalized.progress) {
           normalized.progress = await normalizeProgressValue(existing, normalized.progress);
+          
+          // 🏆 Smart Status Flip: If we have progress, title should be "Watching"
+          if (!normalized.status && existing.status === 'Watchlist') {
+            normalized.status = 'Watching';
+          }
         }
 
         Object.assign(existing, normalized);
         updated++;
       } else {
         // New item (even if action was 'update')
-        const newItem = { title: searchTitle, ...normalized, status: normalized.status || 'Watchlist' };
+        // 🏆 Smart Status Flip for new items
+        let status = normalized.status || 'Watchlist';
+        if (normalized.progress && status === 'Watchlist') {
+          status = 'Watching';
+        }
+
+        const newItem = { title: searchTitle, ...normalized, status };
 
         // 🔥 FETCH TMDB DATA if missing core fields
         if (!newItem.year || !newItem.primary_genre) {
