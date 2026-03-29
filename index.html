@@ -1738,12 +1738,13 @@ if (normalized.Status) {
 
 // 🔥 G1: Async Progress Lookup
 if (normalized.Progress && normalized.Progress.includes('(')) {
-  const parts = normalized.Progress.match(/Season (\d+) \((\d+|complete)\)/i);
+  const parts = normalized.Progress.match(/Season (\d+) \((\d+|complete|\?)\)/i) || normalized.Progress.match(/Season (\d+) \((\d+)\/\?\)/i);
   if (parts) {
     const seasonNum = parts[1];
-    const watched = parts[2];
+    let watched = parts[2];
     const count = await fetchSeasonEpisodeCount(title, seasonNum);
     if (count) {
+      if (watched === '?' || !watched) watched = 1; 
       const watchedCount = (watched === 'complete') ? count : watched;
       normalized.Progress = `Season ${seasonNum} (${watchedCount}/${count})`;
       if (!existing || (existing && !existing.Seasons_Total)) {
@@ -1925,9 +1926,9 @@ MODES:
 - One line per field
 - Format EXACTLY: Canonical_Field_Name: Value
 - Do NOT include any extra text before or after the fields
-- You MUST include EVERY field listed above, INCLUDING Status even if unknown.
-- If a value is unknown, leave the VALUE empty after the colon (never write "unknown")
-- Do NOT omit any fields.
+- You MUST include Title and Status in every preview.
+- For all other fields, ONLY include them if they have a value. Do NOT show empty fields.
+- If a value is unknown, simply omit that line from your output (except for Title and Status).
 - For SERIES progress, use "Season # (#/#)" format if znám, or "Season # (complete)" if marking finished.
 - After listing fields, ask for confirmation on a new line:
 Confirm add? (yes/no)
@@ -2294,8 +2295,8 @@ async function sendMessage(userText) {
       });
 
   // A3: Scan userText for any library title that's explicitly mentioned
-  const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
-  if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
+  const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.Title?.toLowerCase()));
+  if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.Title;
 
   // B3.1: Bulk Autofill Conflict Handler
   if (pendingBulkAutofillConflicts) {
@@ -2345,7 +2346,7 @@ async function sendMessage(userText) {
       updateStats();
       refreshSearch();
       renderWatching();
-      addMsg('assistant', `✅ Added "${pendingSelection.newItem.title}"`);
+      addMsg('assistant', `✅ Added "${pendingSelection.newItem.Title}"`);
       pendingSelection = null;
       return;
     }
@@ -2366,8 +2367,6 @@ async function sendMessage(userText) {
 if (pendingDuplicate) {
 
   if (isAffirmative(reply)) {
-
-    const tmdbData = await fetchTMDbData(pendingDuplicate.title);
 
     if (!tmdbData?.results?.length) {
       addMsg('assistant', '❌ No results found.');
@@ -2410,26 +2409,26 @@ if (pendingDedup) {
 
     if (scope) {
       // Title-specific merge
-      const toMerge = library.filter(i => (i.title || '').toLowerCase() === scope);
-      const keep    = library.filter(i => (i.title || '').toLowerCase() !== scope);
+      const toMerge = library.filter(i => (i.Title || '').toLowerCase() === scope);
+      const keep    = library.filter(i => (i.Title || '').toLowerCase() !== scope);
       if (toMerge.length < 2) {
         pendingDedup = false;
         addMsg('assistant', '✨ No duplicates to merge.');
         return;
       }
       const sorted = [...toMerge].sort((a, b) => {
-        const d = getStatusRank(b.status) - getStatusRank(a.status);
+        const d = getStatusRank(b.Status) - getStatusRank(a.Status);
         return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
       });
       const winner = sorted[0];
-      winner.title = getBestCaseTitle(toMerge);
+      winner.Title = getBestCaseTitle(toMerge);
       library = [...keep, winner];
       removed = toMerge.length - 1;
     } else {
       // Global dedup
       const grouped = new Map();
       for (const item of library) {
-        const key = (item.title || '').toLowerCase();
+        const key = (item.Title || '').toLowerCase();
         if (!key) continue;
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(item);
@@ -2438,11 +2437,11 @@ if (pendingDedup) {
       for (const [, items] of grouped) {
         if (items.length === 1) { mergedLibrary.push(items[0]); continue; }
         const sorted = [...items].sort((a, b) => {
-          const d = getStatusRank(b.status) - getStatusRank(a.status);
+          const d = getStatusRank(b.Status) - getStatusRank(a.Status);
           return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
         });
         const winner = sorted[0];
-        winner.title = getBestCaseTitle(items);
+        winner.Title = getBestCaseTitle(items);
         mergedLibrary.push(winner);
         removed += items.length - 1;
       }
@@ -2476,7 +2475,7 @@ if (pendingDelete) {
     refreshSearch();
     renderWatching();
 
-    addMsg('assistant', `🗑️ Removed "${pendingDelete.title}"`);
+    addMsg('assistant', `🗑️ Removed "${pendingDelete.Title}"`);
 
     pendingDelete = null;
     return;
@@ -2559,12 +2558,12 @@ try {
   console.warn("Provider fetch failed:", e);
 }      
       
-      const title = details.name || details.title;
-      const year = (details.first_air_date || details.release_date || '').split('-')[0];
+      const Title = details.name || details.title;
+      const Year = (details.first_air_date || details.release_date || '').split('-')[0];
 
-      let type = "Movie";
+      let Format = "Movie";
       if (endpoint === "tv") {
-        type = (details.number_of_seasons === 1 && details.status === "Ended")
+        Format = (details.number_of_seasons === 1 && details.status === "Ended")
           ? "Miniseries"
           : "Series";
       }
@@ -2578,72 +2577,65 @@ try {
           );
           
           // 🎯 Force Sci-Fi to be primary if present
-          let primaryGenre = normalizedGenres[0] || "";
+          let Primary_Genre = normalizedGenres[0] || "";
           
           if (normalizedGenres.includes("Sci-Fi")) {
-            primaryGenre = "Sci-Fi";
+            Primary_Genre = "Sci-Fi";
           }
           
           // 🎯 Remove primary from subgenres
-          const subGenres = normalizedGenres
-            .filter(g => g !== primaryGenre)
+          const Subgenre_Tags = normalizedGenres
+            .filter(g => g !== Primary_Genre)
             .join(', ');
 
-      const tone = await detectToneAI(details, normalizedGenres);
-      const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
-      const runtime = endpoint === 'movie' ? details.runtime : '';
+      const Tone = await detectToneAI(details, normalizedGenres);
+      const Seasons_Total = endpoint === 'tv' ? details.number_of_seasons : '';
+      const Runtime = endpoint === 'movie' ? details.runtime : '';
 
 // --- LIFECYCLE ---
-let lifecycle = "";
+let Lifecycle = "";
 
 if (endpoint === "tv") {
-  if (details.status === "Returning Series") lifecycle = "Ongoing";
-  else if (details.status === "Ended") lifecycle = "Finished";
-  else if (details.status === "Canceled") lifecycle = "Cancelled";
+  if (details.status === "Returning Series") Lifecycle = "Ongoing";
+  else if (details.status === "Ended") Lifecycle = "Finished";
+  else if (details.status === "Canceled") Lifecycle = "Cancelled";
 }
 
 // --- STATUS ---
-const status = "Watchlist";
+const Status = "Watchlist";
 
 // --- FINAL OBJECT ---
 const newItem = {
-  title,
-  format: type,
-
-  // Genre (standardized field names)
-  primary_genre: primaryGenre,
-  subgenres: subGenres,
-  tone,
-
-  // Platform + lifecycle
-  platform,
-  lifecycle,
-
-  // Extras
-  seasons,
-  runtime,
-
-  // Core
-  year,
-  status
+  Title,
+  Format,
+  Primary_Genre,
+  Subgenre_Tags,
+  Tone,
+  Platform: platform,
+  Lifecycle,
+  Seasons_Total,
+  Runtime,
+  Year,
+  Status
 };
 
       // Apply status hint if provided
       if (statusHint) {
         const statusMap = { 'watchlist': 'Watchlist', 'watched': 'Watched', 'watching': 'Watching', 'abandoned': 'Abandoned', 'dropped': 'Abandoned' };
-        newItem.status = statusMap[statusHint] || "Watchlist";
+        newItem.Status = statusMap[statusHint] || "Watchlist";
       }
 
-      let display = `Title: ${title}`;
-      if (type) display += `\nFormat: ${type}`;
-      if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
-      if (subGenres) display += `\nSub-genres: ${subGenres}`;
-      if (tone) display += `\nTone: ${tone}`;
-      if (platform) display += `\nPlatform: ${platform}`;
-      if (lifecycle) display += `\nLifecycle: ${lifecycle}`;
-      if (seasons) display += `\nSeasons: ${seasons}`;
-      if (runtime) display += `\nRuntime: ${runtime} min`;
-      if (year) display += `\nYear: ${year}`;
+      let display = `Title: ${newItem.Title}`;
+      if (newItem.Format) display += `\nFormat: ${newItem.Format}`;
+      if (newItem.Status) display += `\nStatus: ${newItem.Status}`;
+      if (newItem.Primary_Genre) display += `\nGenre: ${newItem.Primary_Genre}`;
+      if (newItem.Subgenre_Tags) display += `\nSub-genres: ${newItem.Subgenre_Tags}`;
+      if (newItem.Tone) display += `\nTone: ${newItem.Tone}`;
+      if (newItem.Platform) display += `\nPlatform: ${newItem.Platform}`;
+      if (newItem.Lifecycle) display += `\nLifecycle: ${newItem.Lifecycle}`;
+      if (newItem.Seasons_Total) display += `\nSeasons: ${newItem.Seasons_Total}`;
+      if (newItem.Runtime) display += `\nRuntime: ${newItem.Runtime} min`;
+      if (newItem.Year) display += `\nYear: ${newItem.Year}`;
       display += `\n\nConfirm add? (yes/no)`;
 
       addMsg('assistant', display);
@@ -2751,11 +2743,11 @@ let match = resolveLibraryTitle(title);
 
 // Fallback: substring search (handles extra words)
 if (!match.item) {
-  let inner = library.find(item => title.toLowerCase().includes(item.title.toLowerCase()));
+  let inner = library.find(item => title.toLowerCase().includes(item.Title?.toLowerCase()));
   // If year hint, prefer a match where years align
   if (delYearHint) {
     const yearMatch2 = library.find(item =>
-      title.toLowerCase().includes(item.title.toLowerCase()) && String(item.year) === delYearHint
+      item.Title && title.toLowerCase().includes(item.Title.toLowerCase()) && String(item.Year) === delYearHint
     );
     if (yearMatch2) inner = yearMatch2;
   }
@@ -2773,30 +2765,30 @@ if (match.fuzzy) {
   pendingDelete = existing;
 
   let display = `I couldn’t find "${title}" exactly, but I found this close match:\n\n`;
-  display += `Title: ${existing.title}`;
-  if (existing.format) display += `\nFormat: ${existing.format}`;
-  if (existing.year) display += `\nYear: ${existing.year}`;
-  if (existing.platform) display += `\nPlatform: ${existing.platform}`;
-  if (existing.lifecycle) display += `\nLifecycle: ${existing.lifecycle}`;
-  if (existing.status) display += `\nStatus: ${existing.status}`;
+  display += `Title: ${existing.Title}`;
+  if (existing.Format) display += `\nFormat: ${existing.Format}`;
+  if (existing.Year) display += `\nYear: ${existing.Year}`;
+  if (existing.Platform) display += `\nPlatform: ${existing.Platform}`;
+  if (existing.Lifecycle) display += `\nLifecycle: ${existing.Lifecycle}`;
+  if (existing.Status) display += `\nStatus: ${existing.Status}`;
   display += `\n\nRemove this title instead? (yes/no)`;
 
-  lastDiscussedTitle = existing.title;  // A3
+  lastDiscussedTitle = existing.Title;  // A3
   addMsg('assistant', display);
   return;
 }
 
-  lastDiscussedTitle = existing.title;  // A3
+  lastDiscussedTitle = existing.Title;  // A3
   pendingDelete = existing;
 
 let display = `Are you sure you want to remove:\n\n`;
 
-display += `Title: ${existing.title}`;
-if (existing.format) display += `\nFormat: ${existing.format}`;
-if (existing.year) display += `\nYear: ${existing.year}`;
-if (existing.platform) display += `\nPlatform: ${existing.platform}`;
-if (existing.lifecycle) display += `\nLifecycle: ${existing.lifecycle}`;
-if (existing.status) display += `\nStatus: ${existing.status}`;
+display += `Title: ${existing.Title}`;
+if (existing.Format) display += `\nFormat: ${existing.Format}`;
+if (existing.Year) display += `\nYear: ${existing.Year}`;
+if (existing.Platform) display += `\nPlatform: ${existing.Platform}`;
+if (existing.Lifecycle) display += `\nLifecycle: ${existing.Lifecycle}`;
+if (existing.Status) display += `\nStatus: ${existing.Status}`;
 
 display += `\n\n(yes/no)`;
 
@@ -2813,7 +2805,7 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
 
   // Fallback: scan query for a library title as a substring (handles "check resident alien data")
   if (!match.item) {
-    const inner = library.find(item => checkTitle.toLowerCase().includes(item.title.toLowerCase()));
+    const inner = library.find(item => item.Title && checkTitle.toLowerCase().includes(item.Title.toLowerCase()));
     if (inner) match = { item: inner, fuzzy: false };
   }
 
@@ -2822,20 +2814,20 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   } else {
   const item = match.item;
   let display = match.fuzzy ? `Closest match for \"${checkTitle}\":\n\n` : '';
-  display += `Title: ${item.title}`;
-  if (item.format)        display += `\nFormat: ${item.format}`;
-  if (item.status)        display += `\nStatus: ${item.status}`;
-  if (item.platform)      display += `\nPlatform: ${item.platform}`;
-  if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
-  if (item.subgenres)     display += `\nSubgenres: ${item.subgenres}`;
-  if (item.tone)          display += `\nTone: ${item.tone}`;
-  if (item.lifecycle)     display += `\nLifecycle: ${item.lifecycle}`;
-  if (item.year)          display += `\nYear: ${item.year}`;
-  if (item.seasons)       display += `\nSeasons: ${item.seasons}`;
-  if (item.progress)      display += `\nProgress: ${item.progress}`;
-  if (item.notes)         display += `\nNotes: ${item.notes}`;
-  if (item.date_watched)  display += `\nDate watched: ${item.date_watched}`;
-  lastDiscussedTitle = item.title;  // A3
+  display += `Title: ${item.Title}`;
+  if (item.Format)        display += `\nFormat: ${item.Format}`;
+  if (item.Status)        display += `\nStatus: ${item.Status}`;
+  if (item.Platform)      display += `\nPlatform: ${item.Platform}`;
+  if (item.Primary_Genre) display += `\nGenre: ${item.Primary_Genre}`;
+  if (item.Subgenre_Tags) display += `\nSubgenres: ${item.Subgenre_Tags}`;
+  if (item.Tone)          display += `\nTone: ${item.Tone}`;
+  if (item.Lifecycle)     display += `\nLifecycle: ${item.Lifecycle}`;
+  if (item.Year)          display += `\nYear: ${item.Year}`;
+  if (item.Seasons_Total) display += `\nSeasons: ${item.Seasons_Total}`;
+  if (item.Progress)      display += `\nProgress: ${item.Progress}`;
+  if (item.Notes)         display += `\nNotes: ${item.Notes}`;
+  if (item.Last_Watched_Date)  display += `\nDate watched: ${item.Last_Watched_Date}`;
+  lastDiscussedTitle = item.Title;  // A3
   addMsg('assistant', display);
   return;
   } // end else (library match found)
