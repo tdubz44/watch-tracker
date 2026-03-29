@@ -2126,7 +2126,18 @@
     function isNegative(text) {
       if (!text) return false;
       const t = String(text).trim().toLowerCase();
-      return ['no', 'n', 'cancel', 'nope'].includes(t);
+      return ['no', 'n', 'cancel', 'nope', 'negative'].includes(t);
+    }
+
+    function normalizePlatform(p) {
+      if (!p) return '';
+      const low = p.toLowerCase();
+      if (low.includes('apple')) return 'Apple TV';
+      if (low.includes('netflix')) return 'Netflix';
+      if (low.includes('prime') || low.includes('amazon')) return 'Prime';
+      if (low.includes('disney')) return 'Disney';
+      if (low.includes('crave')) return 'Crave';
+      return p.charAt(0).toUpperCase() + p.slice(1);
     }
 
     function getBestCaseTitle(items) {
@@ -3539,7 +3550,7 @@ Output your answer conversationally.`;
           } catch (err) {
             console.error("Picker fetch failed:", err);
             removeTyping();
-            addMsg('assistant', "⚠️ Failed to fetch details for that selection. Please try again or pick a different number.");
+            addMsg('assistant', `⚠️ Failed to fetch details: ${err.message}. Please try again or pick a different number.`);
             return;
           }
         }
