@@ -645,6 +645,7 @@
         <button class="qa-btn" data-prompt="Give me detailed stats about my library: breakdown by status, format, platform, genre, and anything interesting you notice about my taste patterns.">📊 Library stats</button>
         <button class="qa-btn" data-prompt="Find hidden gems in my watchlist — titles that might be underseen or underrated based on what I tend to love. Prioritize my taste lanes.">💎 Hidden gems</button>
         <button class="qa-btn" data-prompt="Review my 'Watching' and 'Watchlist' titles. For each, determine if there are new episodes or seasons released relative to my progress. Highlight what I should watch next, what's fully caught up, and what's upcoming. Prioritize relevance to my current position, not just general release info. Include Canadian availability when relevant.">📡 Check my shows</button>
+        <button class="qa-btn" onclick="runLibraryCleanup()">🧹 Sweep Library</button>
       </div>
       <div class="chat-window" id="chatWindow">
         <div class="msg ai">
@@ -2386,6 +2387,58 @@ async function runBulkAutofill() {
 }
 
 // ============================================================
+// MANUAL LIBRARY SWEEP (Title Casing + Smart Progress)
+// ============================================================
+async function runLibraryCleanup() {
+  addTyping();
+  addMsg('assistant', "🧹 **Full Library Sweep Started...**\nNormalizing titles, casing, and progress strings across your entire library.");
+
+  let count = 0;
+  for (let item of library) {
+    let changed = false;
+
+    // 1. Title Casing (fix \"dark matter\" -> \"Dark Matter\")
+    if (item.title) {
+       // Only fix if it's all lowercase or all uppercase (excluding single words/acronyms)
+       const isMixed = item.title !== item.title.toLowerCase() && item.title !== item.title.toUpperCase();
+       if (!isMixed) {
+         const words = item.title.toLowerCase().split(' ');
+         item.title = words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+         changed = true;
+       }
+    }
+
+    // 2. Normalize Progress (Season X -> Season X (Y/Y))
+    if (item.progress && item.format !== 'Movie') {
+      const normalized = await normalizeProgressValue(item, item.progress);
+      if (item.progress !== normalized) {
+        item.progress = normalized;
+        changed = true;
+      }
+    }
+
+    // 3. Normalize Genre (Standard Law)
+    if (item.primary_genre) {
+       const { primary, sub } = normalizeGenre(item.primary_genre);
+       if (item.primary_genre !== primary) {
+         item.primary_genre = primary;
+         changed = true;
+       }
+       if (sub && !item.subgenres) {
+         item.subgenres = sub;
+         changed = true;
+       }
+    }
+
+    if (changed) count++;
+  }
+
+  saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+  removeTyping();
+  addMsg('assistant', `✨ **Sweep Finished!**\nAnalyzed entire library and performed **${count}** automated repairs. Your data is now clean and standardized.`);
+}
+
+// ============================================================
 // TMDB ENRICHMENT HELPER — shared by add flow + autofill (B2)
 // ============================================================
 async function enrichFromTMDb(selected) {
@@ -2450,7 +2503,13 @@ async function sendMessage(userText) {
 
   addMsg('user', userText);
 
-  // 🏆 ROBUST DIRECT JSON INTERCEPTOR (H1 Robustness)
+  const reply = userText.toLowerCase().trim();
+
+  // 🧹 SWEEP COMMAND INTERCEPTOR
+  if (reply === 'sweep' || reply === 'clean' || reply === 'fix library') {
+     runLibraryCleanup();
+     return;
+  }
   // Catch any JSON block { ... } at the end of a message and treat it as data.
   const jsonBlockMatch = userText.match(/({[\s\S]+})$/);
   if (jsonBlockMatch) {
@@ -2473,8 +2532,6 @@ async function sendMessage(userText) {
     } catch(e) { console.warn("JSON parse failed, falling through to AI."); }
   }
 
-  const reply = userText.toLowerCase().trim();
-  
   // A3: Scan userText for any library title that's explicitly mentioned
   const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
