@@ -1480,6 +1480,17 @@ function normalizeLibrary() {
     // 🏆 The "Status Never Missing" Rule (Universal Backfill)
     if (!item.status) {
       item.status = item.progress ? 'Watching' : 'Watchlist';
+    } else {
+      const s = String(item.status).toLowerCase();
+      if (s === 'watching') item.status = 'Watching';
+      else if (s === 'watchlist') item.status = 'Watchlist';
+      else if (s === 'watched') item.status = 'Watched';
+      else if (s === 'abandoned') item.status = 'Abandoned';
+    }
+
+    // 🏆 The Tone Beauty Sweep
+    if (item.tone) {
+      item.tone = titleCaseList(item.tone);
     }
 
     // Migrate legacy 'genre' → 'primary_genre'
@@ -1583,6 +1594,23 @@ function resolveLibraryTitle(title) {
   return { item: null, exact: false, fuzzy: false };
 }
 
+// 🎨 Pretty Printer for comma-separated lists
+function titleCaseList(str) {
+  if (!str) return '';
+  return String(str)
+    .split(',')
+    .map(s => s.trim())
+    .map(s => {
+      if (!s) return '';
+      // Handle the 'Sci-Fi' special case
+      if (s.toLowerCase() === 'sci-fi' || s.toLowerCase() === 'science fiction') return 'Sci-Fi';
+      // Otherwise, pure Title Case
+      return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
 // 👑 THE GENRE LAW: Sci-Fi always supercedes as Primary
 function normalizeGenre(input) {
   if (!input) return { primary: '', sub: '' };
@@ -1669,8 +1697,12 @@ function normalizeFields(fields) {
     else if (s === 'abandoned') out.status = 'Abandoned';
   }
 
-  if (out.progress && (!out.status || out.status === 'Watchlist')) {
-    out.status = 'Watching';
+  if (out.tone) {
+    out.tone = titleCaseList(out.tone);
+  }
+
+  if (out.progress && (!out.status || out.status === "Watchlist")) {
+    out.status = "Watching";
   }
   
   if (!out.status) {
@@ -2027,23 +2059,15 @@ RULES:
 - Never recommend Watched or Abandoned titles
 - Check duplicates before adding (use the ALL TITLES pipe-separated list)
 - Don't overwrite populated metadata fields
-- Confirm every change
+- **NEVER** claim a change is "done", "applied", or "finished" unless you are outputting the <<<JSON>>> block in the same message.
+- You do NOT have direct access to the database; you ONLY have the ability to propose changes via JSON.
+- If a user asks for an update or a bulk change (e.g. "update progress fields"), you MUST provide the JSON for those changes and end with "Confirm?".
+- Confirm every proposed change.
 - When the user requests to ADD or UPDATE a title:
-  - DO NOT analyze taste profile UNLESS in SUGGESTION MODE
-  - DO NOT explain or justify the choice
-  - DO NOT include recommendations or opinions
-  - ONLY extract and present metadata
-- Flag Cancelled/Ongoing on recs
-- Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
-- Unclear Canadian availability: say so explicitly
-- When the user mentions a title that is NOT in the library:
-  1. DO NOT just say it is missing.
-  2. IMMEDIATELY propose adding it.
-  3. Provide a brief conversational preamble (e.g., "I've found metadata for [Title]...")
-  4. Include a single <<<JSON>>> block in the SAME message with action: "add".
-  5. The app will automatically enrich this with accurate TMDb metadata for the preview.
-  6. End with "Confirm add?" on the last line.
-
+  - DO NOT analyze taste profile UNLESS in SUGGESTION MODE.
+  - DO NOT explain or justify the choice.
+  - DO NOT include recommendations or opinions.
+  - ONLY extract and present metadata via a single <<<JSON>>> block.
 - Use EXACT field names when generating JSON (NEVER INCLUDE genre, primary_genre, or subgenres - these come ONLY from TMDb):
   title, format, status, progress, platform, tone, lifecycle, year
 
