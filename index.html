@@ -2088,7 +2088,7 @@ function removeTyping() {
   if (t) t.remove();
 }
 
-function parseAndApplyJSON(text) {
+async function parseAndApplyJSON(text) {
 const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
   if (!match) return null;
   try {
@@ -2112,21 +2112,18 @@ updates.forEach(item => {
 
   if (item.genre && !item.primary_genre) {
     const parts = item.genre.split(',').map(s => s.trim()).filter(Boolean);
-
     item.primary_genre = parts[0] || '';
     item.subgenres = parts.slice(1).join(', ');
-
     delete item.genre;
   }
 });
     
-    const result = applyUpdates(updates);
+    const result = await applyUpdates(updates);
     saveLibrary();
     updateStats();
     refreshSearch();
     renderWatching();
-    const total = result.added + result.updated;
-    return total > 0 ? `${result.added} added, ${result.updated} updated` : null;
+    return result; 
   } catch(e) {
     console.error('JSON parse error', e);
     return null;
@@ -3227,9 +3224,18 @@ if (eqMatch) {
     if (affirmatives.includes(rLower)) {
       if (pendingAIConfirmation.deferred_text) {
         // Apply the stored JSON directly — no second API call needed
-        const result = parseAndApplyJSON(pendingAIConfirmation.deferred_text);
+        const result = await parseAndApplyJSON(pendingAIConfirmation.deferred_text);
+        
+        // Update last discussed title if we found a title in the JSON
+        if (pendingAIConfirmation.deferred_text.includes('"title"')) {
+           try {
+             const m = pendingAIConfirmation.deferred_text.match(/"title"\s*:\s*"(.+?)"/);
+             if (m) lastDiscussedTitle = m[1];
+           } catch(e) {}
+        }
+
         pendingAIConfirmation = false;
-        addMsg('assistant', result ? `\u2705 Applied.` : '\u2705 Done.', !!result);
+        addMsg('assistant', (result && (result.added || result.updated)) ? `\u2705 Applied.` : '\u2705 Done.', !!result);
         return;
       }
       // Fallback: no stored JSON, inject override for second AI call
@@ -3321,7 +3327,7 @@ if (eqMatch) {
     if (aiAsksConfirm) {
       pendingAIConfirmation = hasJSON ? { deferred_text: aiReply } : true;
     } else {
-      const jsonResult = parseAndApplyJSON(aiReply);
+      const jsonResult = await parseAndApplyJSON(aiReply);
       pendingAIConfirmation = false;
       addMsg("ai", aiReply, jsonResult);
       return;
