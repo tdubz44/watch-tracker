@@ -1972,12 +1972,13 @@ RULES:
 - Flag Cancelled/Ongoing on recs
 - Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
-- When suggesting adding or updating items:
-  1. DO NOT manually list the metadata fields in your text response (the app will generate a preview automatically).
-  2. Provide a brief conversational preamble (e.g., "I've found metadata for [Title]...")
-  3. Include a single <<<JSON>>> block in the SAME message.
-  4. End with "Confirm add?" or "Confirm update?" on the last line.
-  5. The app will hold the JSON and only apply it after the user says yes.
+- When the user mentions a title that is NOT in the library:
+  1. DO NOT just say it is missing.
+  2. IMMEDIATELY propose adding it.
+  3. Provide a brief conversational preamble (e.g., "I've found metadata for [Title]...")
+  4. Include a single <<<JSON>>> block in the SAME message with action: "add".
+  5. The app will automatically enrich this with accurate TMDb metadata for the preview.
+  6. End with "Confirm add?" on the last line.
 
 - Use EXACT field names when generating JSON (NEVER INCLUDE genre, primary_genre, or subgenres - these come ONLY from TMDb):
   title, format, status, progress, platform, tone, lifecycle, year
