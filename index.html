@@ -2696,7 +2696,7 @@ If no data changes are needed, do NOT output a JSON block.
 CORRECTION HANDLING:
 - If the user says "incorrect", "wrong", "that's not right", "undo", "revert", or similar after an update:
   - DO NOT ask "which title and field?" — use conversation context to know what was just changed
-  - Ask for the correct value: e.g. "Apologies — what should the lifecycle be set to?" OR offer TMDb verification
+  - Ask for the correct value: e.g. "Apologies — what should the Platform be set to?" (Use the ACTUAL field name you just attempted to change).
   - If offering TMDb verification ("Should I recheck TMDb?") and user says yes: DO NOT apply any data yourself. Tell the user: "Please type \`autofill [title]\` to fetch fresh data directly from TMDb."
   - NEVER make up or assume TMDb data — you cannot actually query TMDb
   - Keep it to one short response, not a paragraph
@@ -3081,7 +3081,8 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
             removeTyping();
 
             saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-            addMsg('assistant', `\u2705 Data applied to **${titleKey}**. (${result.added} added, ${result.updated} updated)`);
+            const fields = Object.keys(data).join(', ');
+            addMsg('assistant', `✅ **Applied updates**:\n- ${titleKey}: ${fields}`);
             return;
           }
         } catch (e) { console.warn("JSON parse failed, falling through to AI."); }
@@ -3148,7 +3149,7 @@ Output your answer conversationally.`;
                      if (item) item.platform = upd.platform;
                    });
                    saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                   addMsg('assistant', aiReply.replace(/<<<JSON[\s\S]*?JSON>>>/g, '').trim() + "\n\n\u2705 Applied with your corrections!");
+                   addMsg('assistant', aiReply.replace(/<<<JSON[\s\S]*?JSON>>>/g, '').trim() + `\n\n✅ **Applied with your corrections**:\n${newUpdates.map(u => `- ${u.title}: platform`).join('\n')}`);
                    pendingPlatformConfirmation = null;
                    return;
                 }
@@ -3218,7 +3219,8 @@ Output your answer conversationally.`;
           }
 
           saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-          addMsg('assistant', `✅ Updated **${targetItem.title}**: ${field} "${oldVal || '?'}" → "${targetItem[field]}"`);
+          const oldValStr = (oldVal === undefined || oldVal === null || String(oldVal).trim() === '') ? 'none' : oldVal;
+          addMsg('assistant', `✅ Updated **${targetItem.title}**: ${field} "${oldValStr}" → "${targetItem[field]}"`);
           lastDiscussedTitle = targetItem.title;
           return;
         }
@@ -4020,8 +4022,6 @@ Output your answer conversationally.`;
       // Handle explicit confirmation or cancellation FIRST
       if (pendingAIConfirmation) {
         const rLower = reply.toLowerCase();
-
-        // Exact word matches for confirmation replies
         const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
         const negatives = ['no', 'n', 'cancel', 'nope'];
 
@@ -4033,33 +4033,23 @@ Output your answer conversationally.`;
 
         if (affirmatives.includes(rLower)) {
           if (pendingAIConfirmation.deferred_text) {
-            // Apply the stored JSON directly — no second API call needed
-            const result = await parseAndApplyJSON(pendingAIConfirmation.deferred_text);
-
-            // Update last discussed title if we found a title in the JSON
-            if (pendingAIConfirmation.deferred_text.includes('"title"')) {
-              try {
-                const m = pendingAIConfirmation.deferred_text.match(/"title"\s*:\s*"(.+?)"/);
-                if (m) lastDiscussedTitle = m[1];
-              } catch (e) { }
-            }
-
+            const updates = JSON.parse(pendingAIConfirmation.deferred_text);
+            const result = await applyUpdates(updates);
             pendingAIConfirmation = false;
-
-            let msg = "";
+            
             if (result) {
-              if (result.added > 0 || result.updated > 0) msg = `\u2705 Applied. (${result.added} added, ${result.updated} updated)`;
-              else if (result.skipped > 0) msg = `\u26a0\ufe0f Skipped: ${result.skippedTitles.join(', ')}`;
-              else msg = `\u2705 Done.`;
+              const report = updates.map(u => {
+                const keys = Object.keys(u).filter(k => k !== 'title' && k !== 'action').join(', ');
+                return `- ${u.title}: ${keys || 'metadata'}`;
+              }).join('\n');
+              addMsg('assistant', `✅ **Update Report**:\n${report}`);
             } else {
-              msg = `\u2705 Done.`;
+              addMsg('assistant', `✅ Done.`);
             }
-
-            addMsg('assistant', msg, !!result);
             return;
           }
           // Fallback: no stored JSON, inject override for second AI call
-          confirmOverride = '\n[SYSTEM NOTE: User confirmed. Output <<<JSON>>> NOW to apply the change. No summary, no confirmation prompt.]\n';
+          confirmOverride = '\n[SYSTEM NOTE: User confirmed. Output NOW to apply the change. No summary, no confirmation prompt.]\n';
           pendingAIConfirmation = false;
         }
       }
@@ -4067,8 +4057,8 @@ Output your answer conversationally.`;
       // A4: If no confirmation matched and they typed a command, break out of confirmation
       if (pendingAIConfirmation && /^(merge|remove|delete|add|autofill|update|check|show|list|find|recommend|dedup|clear)\b/i.test(reply)) {
         pendingAIConfirmation = false;
-        // fall through to normal command handlers below
       }
+
 
       try {
         const API_KEY = getOpenAIKey();
@@ -4139,7 +4129,7 @@ Output your answer conversationally.`;
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
             const finalDisplay = `${conversationalText}\n\n${previewBlock.trim()}\n\n${aiReply.split('JSON>>>')[1]?.trim() || (aiAsksConfirm ? "" : "Confirm?")}`;
 
-            pendingAIConfirmation = { deferred_text: `<<<JSON ${JSON.stringify(updates)} JSON>>>` };
+            pendingAIConfirmation = { deferred_text: JSON.stringify(updates) };
             addMsg("ai", finalDisplay);
             return;
 
