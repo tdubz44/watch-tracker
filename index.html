@@ -1831,21 +1831,21 @@ async function enrichItemFromTMDb(item) {
 async function normalizeProgressValue(item, newVal) {
   if (!newVal || typeof newVal !== 'string') return newVal;
 
-  // Pattern: Season 2, S2, Season 2 (10/10), S2 complete, etc.
+  // New Pattern: S#E# or Season # Episode # (e.g. S4E4)
+  const exeyRegex = /(?:Season|S)\s*(\d+)\s*(?:Episode|E|e)\s*(\d+)/i;
+  const exeyMatch = newVal.match(exeyRegex);
+  
+  // Standard Pattern: Season 2, S2, Season 2 (10/10), etc.
   const regex = /(?:Season|S)\s*(\d+)(?:\s*\((\d+)\/(\d+)\))?/i;
   const match = newVal.match(regex);
-  if (!match) return newVal;
+  
+  if (!match && !exeyMatch) return newVal;
 
-  const seasonNum = match[1];
-  let watched = match[2];
-  let total = match[3];
+  const seasonNum = exeyMatch ? exeyMatch[1] : match[1];
+  let watched = exeyMatch ? exeyMatch[2] : (match ? match[2] : null);
+  let total = match ? match[3] : null;
 
-  // If already in Season X (Y/Z) format AND we have the total, just ensure it's "Season X"
-  if (watched && total) {
-    return `Season ${seasonNum} (${watched}/${total})`;
-  }
-
-  // If it's a TV series or Miniseries, we want to fetch the total
+  // If we have watched but no total, or it's just "Season X", we need TMDb
   if (item.format === 'Movie') return newVal;
 
   console.log(`📍 Normalizing progress for "${item.title}" Season ${seasonNum}...`);
@@ -1855,11 +1855,9 @@ async function normalizeProgressValue(item, newVal) {
     tmdbId = await fetchTMDbIdFromIMDb(item.imdbid);
   }
 
-  // If no tmdbId from IMDb, try title search as fallback
   if (!tmdbId) {
     const searchRes = await fetchTMDbData(item.title);
     if (searchRes?.results?.length) {
-      // Find exact or best title/year match
       const best = searchRes.results.find(r => 
         (r.title || r.name || '').toLowerCase() === (item.title || '').toLowerCase()
       ) || searchRes.results[0];
@@ -1870,13 +1868,14 @@ async function normalizeProgressValue(item, newVal) {
   if (tmdbId) {
     const fetchedTotal = await fetchSeasonEpisodeCount(tmdbId, seasonNum);
     if (fetchedTotal) {
-      // Per user: "S2 means the entire season" -> default to full completion
-      return `Season ${seasonNum} (${fetchedTotal}/${fetchedTotal})`;
+      // If we just had "S4", watched defaults to total. If "S4E4", watched is 4.
+      const finalWatched = watched || fetchedTotal;
+      return `Season ${seasonNum} (${finalWatched}/${fetchedTotal})`;
     }
   }
 
-  // Fallback if TMDb fails or no match found
-  return `Season ${seasonNum} (complete)`;
+  // Fallback
+  return watched ? `Season ${seasonNum} (${watched}/?)` : `Season ${seasonNum} (complete)`;
 }
 
 // ============================================================
@@ -2387,34 +2386,56 @@ async function sendMessage(userText) {
     }
   }
 
-  // Intercept assignment: "invasion = watching"
-  const assignMatch = userText.match(/^(.+?)\s*=\s*(.+)$/);
+  // Intercept assignment: "invasion = watching" OR "progress = s4e4"
+  const assignMatch = userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
   if (assignMatch && !pendingAIConfirmation && !pendingUpdate) {
-    const rawTitle = assignMatch[1].trim();
-    const val = assignMatch[2].trim().toLowerCase();
-    const match = resolveLibraryTitle(rawTitle);
-    if (match.item) {
-       let field = "notes";
-       if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(val)) field = "status";
-       else if (/^(movie|series|miniseries)$/i.test(val)) field = "format";
-       else if (/^(netflix|prime|apple|disney|crave)$/i.test(val)) field = "platform";
-       else if (/^(season|s)\s*\d+/.test(val)) field = "progress";
+    let rawKey = assignMatch[1].trim();
+    let val = assignMatch[2].trim();
+    const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+    
+    // Check if the first part is actually a field name (implies "Last Context")
+    const isFieldFirst = VALID_FIELDS.includes(rawKey.toLowerCase());
+    
+    let targetItem = null;
+    let field = "notes";
+
+    if (isFieldFirst && lastDiscussedTitle) {
+      targetItem = findByTitle(lastDiscussedTitle);
+      field = rawKey.toLowerCase();
+    } else {
+      const match = resolveLibraryTitle(rawKey);
+      if (match.item) {
+        targetItem = match.item;
+        // Determine field from value content
+        const vLower = val.toLowerCase();
+        if (/^(watching|watched|watchlist|abandoned|dropped|watchlist)$/i.test(vLower)) field = "status";
+        else if (/^(movie|series|miniseries)$/i.test(vLower)) field = "format";
+        else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLower)) field = "platform";
+        else if (/^(season|s)\s*\d+/.test(vLower)) field = "progress";
+      }
+    }
+
+    if (targetItem) {
+       // Field Normalization
+       if (field === 'status') {
+         const s = val.toLowerCase();
+         if (s === 'watching') val = 'Watching';
+         else if (s === 'watchlist') val = 'Watchlist';
+         else if (s === 'watched') val = 'Watched';
+         else if (s === 'abandoned') val = 'Abandoned';
+       }
        
-       const item = match.item;
-       const oldVal = item[field];
-       
-       // Handle async normalization for status/progress if needed
-       if (field === 'status') item[field] = val.charAt(0).toUpperCase() + val.slice(1);
        if (field === 'progress') {
          addTyping();
-         item[field] = await normalizeProgressValue(item, assignMatch[2].trim());
+         targetItem[field] = await normalizeProgressValue(targetItem, val);
          removeTyping();
        } else {
-         item[field] = assignMatch[2].trim();
+         targetItem[field] = val;
        }
        
        saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-       addMsg('assistant', `✅ Updated **${item.title}** → ${field}: "${item[field]}"`);
+       addMsg('assistant', `✅ Updated **${targetItem.title}** → ${field}: "${targetItem[field]}"`);
+       lastDiscussedTitle = targetItem.title;
        return;
     }
   }
