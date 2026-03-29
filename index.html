@@ -772,13 +772,11 @@ const CHUNK_SIZE = 200; // items per storage key
 async function loadStorage() {
 
   const full = localStorage.getItem(STORAGE_KEY + "_full");
-if (full) {
-  library = JSON.parse(full);
-  console.log("Loaded from localStorage");
-  return;
-}
-
-  try {
+  if (full) {
+    library = JSON.parse(full);
+    console.log("Loaded from localStorage");
+  } else {
+    try {
     // Try chunked storage first
     let metaResult = null;
     try { metaResult = await window.storage.get(STORAGE_KEY + '_meta'); } catch(e) {}
@@ -815,16 +813,22 @@ normalizeLibrary();
     library.forEach(item => {
       if (!('date_watched' in item)) item.date_watched = '';
     });
-    
-    // 🏆 UNIVERSAL NORMALIZATION (Sci-Fi, Tone, Status Integrity)
-    normalizeLibrary();
-    await saveLibrary();
-  } catch(e) { library = []; }
+
+    // 🏆 UNIVERSAL NORMALIZATION (Always happens after ANY load)
+    if (library && library.length > 0) {
+      normalizeLibrary();
+      await saveLibrary();
+      await saveLibrary();
+    }
+  } catch(e) { 
+    console.warn("Storage load failed", e);
+    library = []; 
+  }
+  }
+
   try {
     const convoResult = await window.storage.get(CONVO_KEY);
-    if (convoResult && convoResult.value) {
-      convoHistory = JSON.parse(convoResult.value);
-    }
+    if (convoResult && convoResult.value) convoHistory = JSON.parse(convoResult.value);
   } catch(e) { convoHistory = []; }
 }
 
