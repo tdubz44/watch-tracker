@@ -758,6 +758,7 @@ let pendingDuplicate = null;
 let pendingDelete = null;
 let pendingAutofill = null;      // B1: autofill diff/conflict state
 let pendingDedup = null;         // dedup confirmation state
+let pendingBulkAutofillConflicts = null; // B3.1: bulk autofill review state
 let pendingAIConfirmation = false; // tracks when AI asked "Confirm?" but user hasn't responded yet
 let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
 
@@ -2096,10 +2097,9 @@ async function runBulkAutofill() {
   let msg = `✨ **Sweep Complete**\nAnalyzed ${sweptCount} titles and successfully filled **${filledCount}** blank fields!`;
   
   if (conflicts.length > 0) {
-    let flat = [];
-    conflicts.forEach(c => c.itemConflicts.forEach(ic => flat.push({item: c.item, field: ic.field, tmdb: ic.tmdb})));
-    msg += `\n\n⚠️ Found ${flat.length} discrepancies where your manual data differs from TMDb. Since you entered it manually, I left your data alone!`;
-    // We intentionally don't set pendingAutofill here because bulk conflict resolution is chaotic. Silent preservation of user data is safer.
+    let list = conflicts.map(c => `\u2022 **${c.item.title}**\n    ${c.itemConflicts.map(ic => `${ic.field}: "${c.item[ic.field]}" \u2192 "${ic.tmdb}"`).join('\n    ')}`).join('\n');
+    msg += `\n\n⚠️ **Conflicts found!** TMDb has different values for these fields. Since you entered these manually, I haven't changed them yet.\n\n${list}\n\n**Apply TMDb values for these conflicts?** (yes/no)`;
+    pendingBulkAutofillConflicts = conflicts;
   } else {
     msg += `\n\nNo conflicts found. Your library is clean!`;
   }
@@ -2189,8 +2189,32 @@ async function sendMessage(userText) {
   const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
   if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
 
+  // B3.1: Bulk Autofill Conflict Handler
+  if (pendingBulkAutofillConflicts) {
+    if (isAffirmative(reply)) {
+      let mergedCount = 0;
+      pendingBulkAutofillConflicts.forEach(c => {
+        c.itemConflicts.forEach(ic => {
+          c.item[ic.field] = ic.tmdb;
+          mergedCount++;
+        });
+      });
+      saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+      addMsg('assistant', `✅ Successfully merged **${mergedCount}** values into your library.`);
+      pendingBulkAutofillConflicts = null;
+      return;
+    }
+    if (isNegative(reply)) {
+      pendingBulkAutofillConflicts = null;
+      addMsg('assistant', '⚠️ Conflicts ignored. Your manual values were preserved.');
+      return;
+    }
+    addMsg('assistant', 'Please reply yes or no to merging these bulk conflicts.');
+    return;
+  }
+
   // A1: Clear stale pending states when user starts a new unrelated command
-  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup;
+  const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup || pendingBulkAutofillConflicts;
   if (hasPendingState) {
     const isContinuation = /^(yes|y|ok|okay|confirm|sure|yep|yeah|yea|ya|no|n|cancel|nope|add|search|update|merge|[1-5])$/i.test(reply.trim());
     if (!isContinuation) {
@@ -2200,6 +2224,7 @@ async function sendMessage(userText) {
       pendingUpdate = null;
       pendingAutofill = null;
       pendingDedup = null;
+      pendingBulkAutofillConflicts = null;
       pendingAIConfirmation = false;
       console.log("A1: Cleared stale pending states — new command detected");
     }
@@ -2494,6 +2519,12 @@ const newItem = {
   status
 };
 
+      // Apply status hint if provided
+      if (statusHint) {
+        const statusMap = { 'watchlist': 'Watchlist', 'watched': 'Watched', 'watching': 'Watching', 'abandoned': 'Abandoned', 'dropped': 'Abandoned' };
+        newItem.status = statusMap[statusHint] || "Watchlist";
+      }
+
       let display = `Title: ${title}`;
       if (type) display += `\nFormat: ${type}`;
       if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
@@ -2702,9 +2733,33 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
 }
 
 // ============================================================
+// LOCAL SEARCH HANDLER (Pretty UI)
+// ============================================================
+if (reply.startsWith('search ')) {
+  const searchQuery = userText.replace(/^search\s+/i, '').trim();
+  const searchMatch = resolveLibraryTitle(searchQuery);
+  
+  if (searchMatch.item) {
+    const item = searchMatch.item;
+    let display = searchMatch.fuzzy ? `Closest match for \"${searchQuery}\":\n\n` : '';
+    display += `**${item.title}** (${item.year || '?'})\n`;
+    display += `Format: ${item.format || '?'}\n`;
+    display += `Status: ${item.status || '?'}\n`;
+    display += `Platform: ${item.platform || '?'}\n`;
+    display += `Genre: ${item.primary_genre || '?'}\n`;
+    if (item.progress) display += `Progress: ${item.progress}\n`;
+    if (item.tone)     display += `Tone: ${item.tone}\n`;
+    
+    lastDiscussedTitle = item.title;
+    addMsg('assistant', display, true); // pretty format enabled
+    return;
+  }
+}
+
+// ============================================================
 // BULK AUTOFILL COMMAND HANDLER (B3/F1)
 // ============================================================
-const bulkMatch = /^(autofill|fill|update|check|show|list|find)\s+(all(\s+missing)?|missing|empty|blank)(\s+(titles|metadata|data|platforms|fields|info))?$/i;
+const bulkMatch = /^(autofill|fill|update|check|show|list|find)\s+(all\s+)?(missing|empty|blank|all)(\s+(titles|metadata|data|platforms|fields|info))?$/i;
 if (bulkMatch.test(reply.trim())) {
   runBulkAutofill();
   return;
@@ -2796,14 +2851,15 @@ if (reply.startsWith('autofill ') || reply.startsWith('fill ')) {
 
   const FIELD_NAMES = ['subgenres','subgenre','genre','platform','tone','status','format','lifecycle','progress','year','notes','seasons','runtime','imdb'];
   const afterAdd = reply.replace(/^add\s+/i, '').trim();
-  if (reply.startsWith('add') && !FIELD_NAMES.some(f => afterAdd.startsWith(f))) {
-    console.log("ADD BLOCK HIT");
-    
-    // Strip year hint from title (e.g. "add invasion 2021" → title="invasion", yearHint="2021")
-    const rawAddTitle = userText.replace(/^add\s+/i, '').trim();
-    const addYearMatch = rawAddTitle.match(/\b((?:19|20)\d{2})\b/);
+  const addRegex = /^add\s+(.+?)(?:\s+(?:to|in)\s+(watched|watching|watchlist|abandoned|dropped|watchlist))?$/i;
+  const addMatchStatus = reply.match(addRegex);
+
+  if (addMatchStatus && !FIELD_NAMES.some(f => afterAdd.startsWith(f))) {
+    const rawTitleStr = addMatchStatus[1].trim();
+    const statusHint = addMatchStatus[2] ? addMatchStatus[2].toLowerCase() : null;
+    const addYearMatch = rawTitleStr.match(/\b((?:19|20)\d{2})\b/);
     const addYearHint = addYearMatch ? addYearMatch[1] : null;
-    const cleanTitle = addYearHint ? rawAddTitle.replace(addYearHint, '').trim() : rawAddTitle;
+    const cleanTitle = addYearHint ? rawTitleStr.replace(addYearHint, '').trim() : rawTitleStr;
     console.log("CLEAN TITLE:", cleanTitle, "YEAR HINT:", addYearHint);
 
 const existing = findByTitle(cleanTitle);
