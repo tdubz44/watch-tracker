@@ -2407,6 +2407,7 @@ if (pendingAutofill) {
 }
 
   if (pendingSelection && pendingSelection.results) {
+    const statusHint = pendingSelection.statusHint;
     const choice = parseInt(userText.trim(), 10);
 
     if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
@@ -2867,7 +2868,8 @@ const existing = findByTitle(cleanTitle);
 
 if (existing) {
   pendingDuplicate = {
-    title: cleanTitle
+    title: cleanTitle,
+    statusHint: statusHint
   };
 
   addMsg(
@@ -2901,7 +2903,7 @@ if (existing) {
     }
 
     if (results.length === 1) {
-      pendingSelection = { results };
+      pendingSelection = { results, statusHint };
       return sendMessage('1');
     }
 
@@ -2909,12 +2911,12 @@ if (existing) {
     if (addYearHint) {
       const topYear = (results[0].release_date || results[0].first_air_date || '').split('-')[0];
       if (topYear === addYearHint) {
-        pendingSelection = { results };
+        pendingSelection = { results, statusHint };
         return sendMessage('1');
       }
     }
 
-    pendingSelection = { results };
+    pendingSelection = { results, statusHint };
 
     const options = results.map((r, i) => {
       const name = r.title || r.name;
