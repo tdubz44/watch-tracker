@@ -1580,58 +1580,100 @@ function resolveLibraryTitle(title) {
   return { item: null, exact: false, fuzzy: false };
 }
 
+// 👑 THE GENRE LAW: Sci-Fi always supercedes as Primary
+function normalizeGenre(input) {
+  if (!input) return { primary: '', sub: '' };
+  const arr = Array.isArray(input) 
+    ? input 
+    : String(input).split(',').map(s => s.trim()).filter(Boolean);
+  
+  if (!arr.length) return { primary: '', sub: '' };
+
+  // Rule 1: Find Sci-Fi (case-insensitive, handles "Science Fiction" too)
+  let idx = arr.findIndex(g => {
+    const low = g.toLowerCase();
+    return low === 'sci-fi' || low === 'science fiction';
+  });
+
+  // Rule 2: If found, it's Primary. If not, the first item is Primary.
+  if (idx === -1) idx = 0;
+  
+  let primary = arr[idx];
+  // Standardize "Science Fiction" -> "Sci-Fi"
+  if (primary.toLowerCase() === 'science fiction') primary = 'Sci-Fi';
+  
+  const sub = arr.filter((_, i) => i !== idx).join(', ');
+  return { primary, sub };
+}
+
 function normalizeFields(fields) {
   const keyMap = {
-    'last_watched_date': 'date_watched', 'last watched date': 'date_watched',
-    'last_watched': 'date_watched', 'last watched': 'date_watched',
-    'watched_date': 'date_watched', 'watched date': 'date_watched',
-    'date watched': 'date_watched', 'completed': 'date_watched',
+    // Canonical Map: { normalizedKey: [variations] }
+    'primary_genre': ['primarygenre', 'maingenre', 'genre1', 'genre', 'genres', 'main_genre', 'primary_genre'],
+    'subgenres': ['subgenres', 'subgenre', 'secondarygenre', 'genre2', 'extra', 'secondary_genre', 'sub_genres'],
+    'seasons': ['seasons', 'totalseasons', 'seasoncount', 'showseasons', 'seasons_total', 'total_seasons', 'season_count'],
+    'platform': ['platform', 'streaming', 'service', 'network', 'streamingplatform', 'serviceprovider', 'streaming_service'],
+    'status': ['status', 'showstatus', 'seriesstatus', 'itemstatus', 'show_status', 'series_status'],
+    'progress': ['progress', 'current', 'episode', 'lastwatched', 'last_watched', 'current_episode', 'current_progress'],
+    'year': ['year', 'released', 'releaseyear', 'firstaired', 'release_year', 'first_aired', 'aired_year'],
+    'format': ['format', 'type', 'media', 'mediatype', 'media_type', 'item_type'],
+    'imdbid': ['imdbid', 'imdb', 'imdb_id', 'ttid', 'tt_id'],
+    'date_watched': ['datewatched', 'completedon', 'watchedat', 'date_watched', 'last_watched_date', 'watched_date'],
+    'lifecycle': ['lifecycle', 'showlifecycle', 'life_cycle', 'show_lifecycle', 'status_lifecycle'],
+    'tone': ['tone', 'mood', 'vibe', 'show_tone', 'show_mood']
   };
+
+  const getCanonical = (rawKey) => {
+    const clean = String(rawKey || '').toLowerCase().replace(/[_\s\-\.]/g, '');
+    for (const [canonical, variants] of Object.entries(keyMap)) {
+      if (variants.some(v => v.replace(/[_\s\-\.]/g, '') === clean)) return canonical;
+    }
+    return rawKey.toLowerCase();
+  };
+
   const out = {};
-for (const [k, v] of Object.entries(fields)) {
-  const lowerKey = k.toLowerCase();
-  const value = v;
-
-  // 🔥 SPECIAL HANDLING FOR GENRES
-if (lowerKey === 'genres' && value) {
-  const arr = Array.isArray(value)
-    ? value
-    : String(value)
-        .split(',')
-        .map(x => x.trim())
-        .filter(Boolean);
-
-  out.primary_genre = arr[0] || '';
-  out.subgenres = arr.slice(1).join(', ');
-  continue;
-}
-
-  const norm = keyMap[lowerKey] || k;
-  out[norm] = value;
-}
-
-  // Do NOT back-populate legacy 'genre' field — always use primary_genre
+  for (const [k, v] of Object.entries(fields)) {
+    const norm = getCanonical(k);
+    
+    // 🔥 CENTRAL GENRE NORMALIZATION
+    if ((norm === 'primary_genre' || norm === 'genre' || norm === 'genres' || norm === 'subgenres') && v) {
+      // If we already handled genre via this loop, don't re-run
+      if (out.primary_genre && k.toLowerCase() !== 'genres') { /* skip */ } 
+      else {
+        const { primary, sub } = normalizeGenre(v);
+        out.primary_genre = primary;
+        out.subgenres = sub;
+        continue;
+      }
+    }
+    
+    out[norm] = v;
+  }
 
   if (out.platform) {
-  const p = out.platform.toLowerCase();
+    const p = String(out.platform).toLowerCase();
+    if (p.includes('apple')) out.platform = 'Apple TV';
+    else if (p.includes('netflix')) out.platform = 'Netflix';
+    else if (p.includes('prime')) out.platform = 'Prime';
+    else if (p.includes('disney')) out.platform = 'Disney+';
+  }
 
-  if (p.includes('apple')) out.platform = 'Apple TV';
-  else if (p.includes('netflix')) out.platform = 'Netflix';
-  else if (p.includes('prime')) out.platform = 'Prime';
-}
+  if (out.status) {
+    const s = String(out.status).toLowerCase().trim();
+    if (s === 'watching') out.status = 'Watching';
+    else if (s === 'watchlist') out.status = 'Watchlist';
+    else if (s === 'watched') out.status = 'Watched';
+    else if (s === 'abandoned') out.status = 'Abandoned';
+  }
 
-if (out.status) {
-  const s = out.status.toLowerCase();
-  if (s === 'watching') out.status = 'Watching';
-  else if (s === 'watchlist') out.status = 'Watchlist';
-  else if (s === 'watched') out.status = 'Watched';
-  else if (s === 'abandoned') out.status = 'Abandoned';
-}
+  if (out.progress && (!out.status || out.status === 'Watchlist')) {
+    out.status = 'Watching';
+  }
+  
+  if (!out.status) {
+    out.status = 'Watchlist';
+  }
 
-// 🏆 CENTRAL SMART STATUS RULE
-if (out.progress && (!out.status || out.status === 'Watchlist')) {
-  out.status = 'Watching';
-}
   return out;
 }
 
@@ -2140,7 +2182,7 @@ updates.forEach(item => {
 // MERGE HELPERS (ported from original)
 // ============================================================
 function getStatusRank(status) {
-  const s = (status || '').toLowerCase();
+  const s = (status || '').toLowerCase().trim();
   if (s === 'watched')   return 4;
   if (s === 'watching')  return 3;
   if (s === 'abandoned') return 2;
@@ -2167,8 +2209,10 @@ function generateMetadataPreview(item) {
   let display = `**${item.title}** (${item.year || '?'})`;
   if (item.format)        display += `\nFormat: ${item.format}`;
   
-  // 🏆 Always show status (Default to Watchlist if somehow still missing)
-  display += `\nStatus: ${item.status || 'Watchlist'}`; 
+  // 🏆 Force "Pretty" Status Labels (Title Case)
+  const s = item.status || 'Watchlist';
+  const prettyStatus = s.charAt(0).toUpperCase() + s.slice(1);
+  display += `\nStatus: ${prettyStatus}`; 
   
   if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
   if (item.subgenres)     display += `\nSub-genres: ${item.subgenres}`;
@@ -2300,13 +2344,8 @@ async function enrichFromTMDb(selected) {
     format = (details.number_of_seasons === 1 && details.status === 'Ended') ? 'Miniseries' : 'Series';
   }
 
-  const genres = (details.genres?.map(g => g.name) || []);
-  const normalizedGenres = genres.map(g =>
-    (g === 'Science Fiction' || g === 'Sci-Fi & Fantasy') ? 'Sci-Fi' : g
-  );
-  let primary_genre = normalizedGenres[0] || '';
-  if (normalizedGenres.includes('Sci-Fi')) primary_genre = 'Sci-Fi';
-  const subgenres = normalizedGenres.filter(g => g !== primary_genre).join(', ');
+  const rawGenres = (details.genres?.map(g => g.name) || []);
+  const { primary: primary_genre, sub: subgenres } = normalizeGenre(rawGenres);
 
   const tone     = await detectToneAI(details, normalizedGenres);
   const seasons  = endpoint === 'tv'    ? details.number_of_seasons : '';
@@ -2817,8 +2856,8 @@ if (mergeSpecificMatch && !/^merge\s+duplicates?$/i.test(reply)) {
   return;
 }
 
-// Global dedup: "remove/find/show/list/check/merge duplicates" or "merge" alone
-if (/^(remove|delete|find|show|list|check|merge)\s+duplicates?$/i.test(reply.trim()) || /^merge$/i.test(reply.trim())) {
+// Global dedup: "clean-up/remove/delete/find/show/list/check/merge duplicates" or "merge"
+if (/^(remove|delete|find|show|list|check|merge|clean-up|cleanup|fix|clear|handle)\s+duplicates?$/i.test(reply.trim()) || /^merge$/i.test(reply.trim())) {
   const counts = {};
   for (const item of library) {
     const key = (item.title || '').toLowerCase();
@@ -2840,7 +2879,9 @@ if (/^(remove|delete|find|show|list|check|merge)\s+duplicates?$/i.test(reply.tri
     const years    = [...new Set(matching.map(i => i.year).filter(Boolean))];
     const statuses = [...new Set(matching.map(i => i.status).filter(Boolean))];
     const label    = titleKey.replace(/\b\w/g, c => c.toUpperCase());
-    return `\u2022 ${label} \u00d7${count}\n    Format: ${formats.join(', ') || 'Unknown'}\n    Year: ${years.join(', ') || 'Unknown'}\n    Status: ${statuses.join(', ') || 'Unknown'}`;
+    const s = statuses[0] || 'watchlist';
+    const prettyStatus = s.charAt(0).toUpperCase() + s.slice(1);
+    return `\u2022 ${label} \u00d7${count}\n    Format: ${formats.join(', ') || 'Unknown'}\n    Year: ${years.join(', ') || 'Unknown'}\n    Status: ${prettyStatus}`;
   }).join('\n');
 
   pendingDedup = true;
@@ -2936,23 +2977,15 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   } else {
   const item = match.item;
   let display = match.fuzzy ? `Closest match for \"${checkTitle}\":\n\n` : '';
-  display += `Title: ${item.title}`;
-  if (item.format)        display += `\nFormat: ${item.format}`;
-  if (item.status)        display += `\nStatus: ${item.status}`;
-  if (item.platform)      display += `\nPlatform: ${item.platform}`;
-  if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
-  if (item.subgenres)     display += `\nSubgenres: ${item.subgenres}`;
-  if (item.tone)          display += `\nTone: ${item.tone}`;
-  if (item.lifecycle)     display += `\nLifecycle: ${item.lifecycle}`;
-  if (item.year)          display += `\nYear: ${item.year}`;
-  if (item.seasons)       display += `\nSeasons: ${item.seasons}`;
-  if (item.progress)      display += `\nProgress: ${item.progress}`;
-  if (item.notes)         display += `\nNotes: ${item.notes}`;
-  if (item.date_watched)  display += `\nDate watched: ${item.date_watched}`;
-  lastDiscussedTitle = item.title;  // A3
+  
+  // 🏆 USE CENTRAL PREVIEWER
+  display += generateMetadataPreview(item);
+  if (item.notes) display += `\nNotes: ${item.notes}`;
+  
+  lastDiscussedTitle = item.title;
   addMsg('assistant', display);
   return;
-  } // end else (library match found)
+  }
 }
 
 // ============================================================
