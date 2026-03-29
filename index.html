@@ -3203,6 +3203,7 @@ Output your answer conversationally.`;
             else if (s === 'abandoned') val = 'Abandoned';
           }
 
+          const oldVal = targetItem[field];
           if (field === 'progress') {
             addTyping();
             targetItem[field] = await normalizeProgressValue(targetItem, val);
@@ -3217,7 +3218,7 @@ Output your answer conversationally.`;
           }
 
           saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-          addMsg('assistant', `✅ Updated **${targetItem.title}** → ${field}: "${targetItem[field]}"`);
+          addMsg('assistant', `✅ Updated **${targetItem.title}**: ${field} "${oldVal || '?'}" → "${targetItem[field]}"`);
           lastDiscussedTitle = targetItem.title;
           return;
         }
@@ -3225,12 +3226,13 @@ Output your answer conversationally.`;
 
       if (pendingSelection && pendingSelection.newItem) {
         if (isAffirmative(reply)) {
-          library.push(pendingSelection.newItem);
+          const item = pendingSelection.newItem;
+          library.push(item);
           saveLibrary();
           updateStats();
           refreshSearch();
           renderWatching();
-          addMsg('assistant', `✅ Added "${pendingSelection.newItem.title}"`);
+          addMsg('assistant', `✅ Added "${item.title}" (${item.year || '?'}) on ${item.platform || 'unknown'}`);
           pendingSelection = null;
           return;
         }
