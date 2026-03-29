@@ -1752,6 +1752,82 @@ async function fetchSeasonEpisodeCount(tmdbId, seasonNum) {
   }
 }
 
+async function enrichItemFromTMDb(item) {
+  const key = getTMDbKey();
+  if (!key || !item.title) return item;
+
+  // 1. Search for Title
+  const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(item.title)}`;
+  const searchRes = await fetch(searchUrl);
+  const searchData = await searchRes.json();
+  if (!searchData?.results?.length) return item;
+
+  // Best match: exact title or the first result
+  const best = searchData.results.find(r => 
+    (r.title || r.name || '').toLowerCase() === item.title.toLowerCase()
+  ) || searchData.results[0];
+
+  const id = best.id;
+  const type = best.media_type === 'tv' ? 'tv' : 'movie';
+
+  // 2. Fetch Details
+  const detailsRes = await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${key}`);
+  const details = await detailsRes.json();
+
+  // 3. Populate fields
+  if (!item.year) item.year = (details.release_date || details.first_air_date || '').split('-')[0];
+  if (!item.format) {
+    if (type === 'movie') item.format = 'Movie';
+    else {
+      item.format = (details.number_of_seasons === 1 && details.status === "Ended") ? "Miniseries" : "Series";
+    }
+  }
+
+  // Genre logic (Sci-Fi priority)
+  const genres = (details.genres?.map(g => g.name) || []);
+  const normalizedGenres = genres.map(g => (g === "Science Fiction" || g === "Sci-Fi & Fantasy") ? "Sci-Fi" : g);
+  let primary = normalizedGenres[0] || "";
+  if (normalizedGenres.includes("Sci-Fi")) primary = "Sci-Fi";
+  if (!item.primary_genre) item.primary_genre = primary;
+  if (!item.subgenres) item.subgenres = normalizedGenres.filter(g => g !== primary).join(', ');
+
+  // Platform (CA flatrate)
+  try {
+    const provRes = await fetch(`https://api.themoviedb.org/3/${type}/${id}/watch/providers?api_key=${key}`);
+    const provData = await provRes.json();
+    const ca = provData.results?.CA;
+    if (ca?.flatrate?.length) {
+      const p = ca.flatrate[0].provider_name.toLowerCase();
+      if (p.includes('apple')) item.platform = 'Apple TV';
+      else if (p.includes('netflix')) item.platform = 'Netflix';
+      else if (p.includes('prime')) item.platform = 'Prime';
+      else if (p.includes('disney')) item.platform = 'Disney';
+      else if (p.includes('crave')) item.platform = 'Crave';
+    }
+  } catch (e) { console.warn("Provider fetch skipped", e); }
+
+  // Misc
+  if (!item.runtime && details.runtime) item.runtime = details.runtime;
+  if (!item.seasons && details.number_of_seasons) item.seasons = details.number_of_seasons;
+  if (!item.imdbid) {
+    if (type === 'movie') item.imdbid = details.imdb_id;
+    else {
+      const extRes = await fetch(`https://api.themoviedb.org/3/tv/${id}/external_ids?api_key=${key}`);
+      const extData = await extRes.json();
+      item.imdbid = extData.imdb_id;
+    }
+  }
+
+  // Lifecycle
+  if (type === 'tv' && !item.lifecycle) {
+    if (details.status === "Returning Series") item.lifecycle = "Ongoing";
+    else if (details.status === "Ended") item.lifecycle = "Finished";
+    else if (details.status === "Canceled") item.lifecycle = "Cancelled";
+  }
+
+  return item;
+}
+
 async function normalizeProgressValue(item, newVal) {
   if (!newVal || typeof newVal !== 'string') return newVal;
 
@@ -1912,13 +1988,14 @@ RULES:
 - Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
 - When suggesting adding or updating items:
-  1. State the TITLE clearly, followed by the proposed field values in plain text
-  2. Include the <<<JSON>>> block in the SAME message
-  3. End with "Confirm add?" or "Confirm update?" on the last line
-  4. The app will hold the JSON and only apply it after the user says yes
+  1. DO NOT manually list the metadata fields in your text response (the app will generate a preview automatically).
+  2. Provide a brief conversational preamble (e.g., "I've found metadata for [Title]...")
+  3. Include a single <<<JSON>>> block in the SAME message.
+  4. End with "Confirm add?" or "Confirm update?" on the last line.
+  5. The app will hold the JSON and only apply it after the user says yes.
 
 - Use EXACT field names when generating JSON (NEVER INCLUDE genre, primary_genre, or subgenres - these come ONLY from TMDb):
-  title, format, status, platform, tone, lifecycle, year
+  title, format, status, progress, platform, tone, lifecycle, year
 
 - When reporting missing metadata:
   - Group titles by missing field combinations instead of listing each item individually
@@ -2082,6 +2159,22 @@ function getMetadataScore(item) {
   if (item.seasons)                   score++;
   if (item.imdbid)                    score++;
   return score;
+}
+
+function generateMetadataPreview(item) {
+  let display = `**${item.title}** (${item.year || '?'})`;
+  if (item.format)        display += `\nFormat: ${item.format}`;
+  if (item.status)        display += `\nStatus: ${item.status}`;
+  if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
+  if (item.subgenres)     display += `\nSub-genres: ${item.subgenres}`;
+  if (item.tone)          display += `\nTone: ${item.tone}`;
+  if (item.platform)      display += `\nPlatform: ${item.platform}`;
+  if (item.lifecycle)     display += `\nLifecycle: ${item.lifecycle}`;
+  if (item.progress)      display += `\nProgress: ${item.progress}`;
+  if (item.seasons)       display += `\nSeasons: ${item.seasons}`;
+  if (item.runtime)       display += `\nRuntime: ${item.runtime} min`;
+  if (item.imdbid)        display += `\nIMDb ID: ${item.imdbid}`;
+  return display;
 }
 
 // ============================================================
@@ -2291,6 +2384,38 @@ async function sendMessage(userText) {
       pendingBulkAutofillConflicts = null;
       pendingAIConfirmation = false;
       console.log("A1: Cleared stale pending states — new command detected");
+    }
+  }
+
+  // Intercept assignment: "invasion = watching"
+  const assignMatch = userText.match(/^(.+?)\s*=\s*(.+)$/);
+  if (assignMatch && !pendingAIConfirmation && !pendingUpdate) {
+    const rawTitle = assignMatch[1].trim();
+    const val = assignMatch[2].trim().toLowerCase();
+    const match = resolveLibraryTitle(rawTitle);
+    if (match.item) {
+       let field = "notes";
+       if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(val)) field = "status";
+       else if (/^(movie|series|miniseries)$/i.test(val)) field = "format";
+       else if (/^(netflix|prime|apple|disney|crave)$/i.test(val)) field = "platform";
+       else if (/^(season|s)\s*\d+/.test(val)) field = "progress";
+       
+       const item = match.item;
+       const oldVal = item[field];
+       
+       // Handle async normalization for status/progress if needed
+       if (field === 'status') item[field] = val.charAt(0).toUpperCase() + val.slice(1);
+       if (field === 'progress') {
+         addTyping();
+         item[field] = await normalizeProgressValue(item, assignMatch[2].trim());
+         removeTyping();
+       } else {
+         item[field] = assignMatch[2].trim();
+       }
+       
+       saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+       addMsg('assistant', `✅ Updated **${item.title}** → ${field}: "${item[field]}"`);
+       return;
     }
   }
 
@@ -3129,21 +3254,59 @@ if (eqMatch) {
 
     // Apply JSON — but defer if AI asks for confirmation in same message
     const aiStripped = aiReply.replace(/<<<JSON[\s\S]*?JSON>>>/g, '').trim();
-    const aiAsksConfirm = /confirm (add|update|change|it)\??/i.test(aiStripped);
     const hasJSON = /<<<JSON[\s\S]*?JSON>>>/.test(aiReply);
+    const aiAsksConfirm = /confirm (add|update|change|it)\??/i.test(aiStripped);
 
-    let jsonResult = null;
-    if (hasJSON && aiAsksConfirm) {
-      // Store JSON for user to confirm — don't apply yet
-      pendingAIConfirmation = { deferred_text: aiReply };
-    } else if (!hasJSON && aiAsksConfirm) {
-      // AI asked confirm but gave no JSON — will need second API call
-      pendingAIConfirmation = true;
-    } else {
-      jsonResult = parseAndApplyJSON(aiReply);
-      pendingAIConfirmation = false;
+    if (hasJSON) {
+      try {
+        const jsonMatch = aiReply.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
+        const cleaned = jsonMatch[1].replace(/\\n/g, '').replace(/\\"/g, '"').trim().replace(/^[^\[]*/, '');
+        let parsed = JSON.parse(cleaned);
+        const updates = Array.isArray(parsed) ? parsed : [parsed];
+
+        addTyping(); // Pre-fetching TMDb data for the preview
+        
+        let previewBlock = "";
+        for (const update of updates) {
+          if (update.action === 'add' || update.action === 'update') {
+            const existing = findByTitle(update.title);
+            let itemProxy = existing ? { ...existing, ...update } : { ...update };
+            
+            // 🚀 ASYNC ENRICHMENT + PROGRESS NORMALIZATION
+            itemProxy = await enrichItemFromTMDb(itemProxy);
+            if (update.progress) {
+              itemProxy.progress = await normalizeProgressValue(itemProxy, update.progress);
+              update.progress = itemProxy.progress; // sync back to the actual instruction
+            }
+            
+            previewBlock += "\n\n" + generateMetadataPreview(itemProxy);
+          }
+        }
+        removeTyping();
+
+        const conversationalText = aiReply.split('<<<JSON')[0].trim();
+        const finalDisplay = `${conversationalText}\n\n${previewBlock.trim()}\n\n${aiReply.split('JSON>>>')[1]?.trim() || (aiAsksConfirm ? "" : "Confirm?")}`;
+        
+        pendingAIConfirmation = { deferred_text: `<<<JSON ${JSON.stringify(updates)} JSON>>>` };
+        addMsg("ai", finalDisplay);
+        return;
+
+      } catch (err) {
+        console.warn("Dynamic preview failed, falling back to raw.", err);
+        removeTyping();
+      }
     }
-    addMsg("ai", aiReply, jsonResult);
+
+    if (aiAsksConfirm) {
+      pendingAIConfirmation = hasJSON ? { deferred_text: aiReply } : true;
+    } else {
+      const jsonResult = parseAndApplyJSON(aiReply);
+      pendingAIConfirmation = false;
+      addMsg("ai", aiReply, jsonResult);
+      return;
+    }
+
+    addMsg("ai", aiReply);
   
   } catch (e) {
     removeTyping();
