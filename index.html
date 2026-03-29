@@ -729,21 +729,21 @@ const VALID_PLATFORMS = ['Netflix','Prime','Crave','Disney','Apple TV'];
 const VALID_GENRES = ['Comedy','Drama','Action','Sci-Fi','Documentary','Adventure','Crime','Animation','Horror','Romance','Fantasy','Mystery','Thriller'];
 const VALID_LIFECYCLE = ['Finished','Ongoing','Cancelled'];
 const SCHEMA = {
-  title: '',
-  year: '',
-  imdbid: '',
-  format: '',
-  lifecycle: '',
-  status: '',
-  progress: '',
-  seasons_total: '',
-  episodes_total: '',
-  primary_genre: '',
-  subgenres: '',
-  tone: '',
-  platform: '',
-  notes: '',
-  date_watched: ''
+  Title: '',
+  Year: '',
+  IMDb_ID: '',
+  Format: '',
+  Lifecycle: '',
+  Status: '',
+  Progress: '',
+  Seasons_Total: '',
+  Primary_Genre: '',
+  Subgenre_Tags: '',
+  Tone: '',
+  Platform: '',
+  Notes: '',
+  Last_Watched_Date: '',
+  Runtime: ''
 };
 
 // ============================================================
@@ -865,10 +865,10 @@ function formatBadgeClass(f) {
 
 function updateStats() {
   document.getElementById('statTotal').textContent = library.length;
-  document.getElementById('statWatched').textContent = library.filter(x=>x.status==='Watched').length;
-  document.getElementById('statWatching').textContent = library.filter(x=>x.status==='Watching').length;
-  document.getElementById('statWatchlist').textContent = library.filter(x=>x.status==='Watchlist').length;
-  document.getElementById('statAbandoned').textContent = library.filter(x=>x.status==='Abandoned').length;
+  document.getElementById('statWatched').textContent = library.filter(x=>x.Status==='Watched').length;
+  document.getElementById('statWatching').textContent = library.filter(x=>x.Status==='Watching').length;
+  document.getElementById('statWatchlist').textContent = library.filter(x=>x.Status==='Watchlist').length;
+  document.getElementById('statAbandoned').textContent = library.filter(x=>x.Status==='Abandoned').length;
 }
 
 // ============================================================
@@ -892,7 +892,7 @@ document.getElementById('tabBar').addEventListener('click', e => {
 function renderSearch(query) {
   const container = document.getElementById('searchResults');
   const q = query.toLowerCase().trim();
-  const results = q ? library.filter(x => x.title && x.title.toLowerCase().includes(q)) : library;
+  const results = q ? library.filter(x => x.Title && x.Title.toLowerCase().includes(q)) : library;
 
   if (!results.length) {
     container.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div>${q ? 'No titles match "'+query+'"' : 'Your library is empty. Upload a CSV to get started.'}</div>`;
@@ -901,38 +901,38 @@ function renderSearch(query) {
 
   container.innerHTML = `<div class="search-card-list">${results.map(item => {
     const metaChips = [
-      item.primary_genre ? `<span class="meta-chip mc-genre">${esc(item.primary_genre)}</span>` : '',
-      item.tone ? `<span class="meta-chip mc-tone">${esc(item.tone)}</span>` : '',
-      item.platform ? `<span class="meta-chip mc-platform">📺 ${esc(item.platform)}</span>` : '',
-      item.lifecycle ? `<span class="meta-chip mc-lifecycle">${esc(item.lifecycle)}</span>` : '',
-      item.runtime ? `<span class="meta-chip mc-year">${esc(item.runtime)} min</span>` : '',
-      item.year ? `<span class="meta-chip mc-year">${esc(item.year)}</span>` : '',
-      item.date_watched ? `<span class="meta-chip mc-date">📅 ${esc(item.date_watched)}</span>` : '',
+      item.Primary_Genre ? `<span class="meta-chip mc-genre">${esc(item.Primary_Genre)}</span>` : '',
+      item.Tone ? `<span class="meta-chip mc-tone">${esc(item.Tone)}</span>` : '',
+      item.Platform ? `<span class="meta-chip mc-platform">📺 ${esc(item.Platform)}</span>` : '',
+      item.Lifecycle ? `<span class="meta-chip mc-lifecycle">${esc(item.Lifecycle)}</span>` : '',
+      item.Runtime ? `<span class="meta-chip mc-year">${esc(item.Runtime)} min</span>` : '',
+      item.Year ? `<span class="meta-chip mc-year">${esc(item.Year)}</span>` : '',
+      item.Last_Watched_Date ? `<span class="meta-chip mc-date">📅 ${esc(item.Last_Watched_Date)}</span>` : '',
     ].filter(Boolean).join('');
 
-const subgenreChips = item.subgenres
-  ? (Array.isArray(item.subgenres)
-      ? item.subgenres
-      : item.subgenres.split(','))
+const subgenreChips = item.Subgenre_Tags
+  ? (Array.isArray(item.Subgenre_Tags)
+      ? item.Subgenre_Tags
+      : item.Subgenre_Tags.split(','))
       .map(s => s.trim()).filter(Boolean)
       .map(s => `<span class="subgenre-chip">${esc(s)}</span>`).join('')
   : '';
 
-    const progressLine = item.progress
-      ? `<div class="sc-progress">📍 ${esc(item.progress)}</div>` : '';
-    const notesLine = item.notes
-      ? `<div class="sc-notes">${esc(item.notes)}</div>` : '';
+    const progressLine = item.Progress
+      ? `<div class="sc-progress">📍 ${esc(item.Progress)}</div>` : '';
+    const notesLine = item.Notes
+      ? `<div class="sc-notes">${esc(item.Notes)}</div>` : '';
 
     return `<div class="search-card">
       <div class="sc-top">
         <div class="sc-left">
-          <div class="sc-title">${esc(item.title||'')}</div>
+          <div class="sc-title">${esc(item.Title||'')}</div>
           <div class="sc-badges">
-            <span class="${statusBadgeClass(item.status)}">${esc(item.status||'')}</span>
-            ${item.format ? `<span class="${formatBadgeClass(item.format)}">${esc(item.format)}</span>` : ''}
+            <span class="${statusBadgeClass(item.Status)}">${esc(item.Status||'')}</span>
+            ${item.Format ? `<span class="${formatBadgeClass(item.Format)}">${esc(item.Format)}</span>` : ''}
           </div>
         </div>
-        <button class="send-to-btn" data-title="${esc(item.title||'')}">↗ Chat</button>
+        <button class="send-to-btn" data-title="${esc(item.Title||'')}">↗ Chat</button>
       </div>
       ${metaChips ? `<div class="sc-chips">${metaChips}</div>` : ''}
       ${subgenreChips ? `<div class="sc-subgenres">${subgenreChips}</div>` : ''}
@@ -977,11 +977,11 @@ function esc(s) {
 // ============================================================
 function renderWatching() {
   const grid = document.getElementById('watchingGrid');
-  const watching = library.filter(x => x.status === 'Watching').sort((a, b) => {
-    if (!a.date_watched && !b.date_watched) return 0;
-    if (!a.date_watched) return 1;
-    if (!b.date_watched) return -1;
-    return b.date_watched.localeCompare(a.date_watched);
+  const watching = library.filter(x => x.Status === 'Watching').sort((a, b) => {
+    if (!a.Last_Watched_Date && !b.Last_Watched_Date) return 0;
+    if (!a.Last_Watched_Date) return 1;
+    if (!b.Last_Watched_Date) return -1;
+    return b.Last_Watched_Date.localeCompare(a.Last_Watched_Date);
   });
   if (!watching.length) {
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">▶️</div>Nothing currently watching. Time to start something!</div>`;
@@ -989,23 +989,23 @@ function renderWatching() {
   }
   grid.innerHTML = watching.map(item => {
     const details = [
-      item.platform ? `<div class="wc-detail-row"><span class="wc-detail-icon">📺</span><span class="wc-detail-val bright">${esc(item.platform)}</span></div>` : '',
-      item.tone     ? `<div class="wc-detail-row"><span class="wc-detail-icon">🎭</span><span class="wc-detail-val">${esc(item.tone)}</span></div>` : '',
-      item.progress ? `<div class="wc-detail-row"><span class="wc-detail-icon">📍</span><span class="wc-detail-val">${esc(item.progress)}</span></div>` : '',
-      item.date_watched ? `<div class="wc-detail-row"><span class="wc-detail-icon">📅</span><span class="wc-detail-val">${esc(item.date_watched)}</span></div>` : '',
+      item.Platform ? `<div class="wc-detail-row"><span class="wc-detail-icon">📺</span><span class="wc-detail-val bright">${esc(item.Platform)}</span></div>` : '',
+      item.Tone     ? `<div class="wc-detail-row"><span class="wc-detail-icon">🎭</span><span class="wc-detail-val">${esc(item.Tone)}</span></div>` : '',
+      item.Progress ? `<div class="wc-detail-row"><span class="wc-detail-icon">📍</span><span class="wc-detail-val">${esc(item.Progress)}</span></div>` : '',
+      item.Last_Watched_Date ? `<div class="wc-detail-row"><span class="wc-detail-icon">📅</span><span class="wc-detail-val">${esc(item.Last_Watched_Date)}</span></div>` : '',
     ].filter(Boolean).join('');
 
     return `<div class="watching-card">
       <div class="wc-title-row">
-        <div class="wc-title">${esc(item.title||'')}</div>
+        <div class="wc-title">${esc(item.Title||'')}</div>
         <div class="wc-badges">
-          ${item.format ? `<span class="${formatBadgeClass(item.format)}">${esc(item.format)}</span>` : ''}
-          ${item.lifecycle ? `<span class="badge" style="background:rgba(255,255,255,0.04);color:var(--text3);border:1px solid var(--border2)">${esc(item.lifecycle)}</span>` : ''}
+          ${item.Format ? `<span class="${formatBadgeClass(item.Format)}">${esc(item.Format)}</span>` : ''}
+          ${item.Lifecycle ? `<span class="badge" style="background:rgba(255,255,255,0.04);color:var(--text3);border:1px solid var(--border2)">${esc(item.Lifecycle)}</span>` : ''}
         </div>
       </div>
-      ${item.primary_genre ? `<div class="wc-badges"><span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border2)">${esc(item.primary_genre)}</span></div>` : ''}
+      ${item.Primary_Genre ? `<div class="wc-badges"><span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2);border:1px solid var(--border2)">${esc(item.Primary_Genre)}</span></div>` : ''}
       ${details ? `<div class="wc-details">${details}</div>` : ''}
-      ${item.notes ? `<div class="wc-notes-text">${esc(item.notes)}</div>` : ''}
+      ${item.Notes ? `<div class="wc-notes-text">${esc(item.Notes)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1093,27 +1093,27 @@ function parseCSVRow(line) {
 function normalizeRow(row) {
   // Normalize header variations to our standard field names
   const fieldMap = {
-    'title': 'title', 'name': 'title',
-    'status': 'status',
-    'format': 'format', 'type': 'format', 'title type': 'format',
-    'genre': 'primary_genre', 'primary genre': 'primary_genre', 'genres': 'primary_genre',
-    'subgenres': 'subgenres', 'subgenre': 'subgenres', 'subgenre tags': 'subgenres', 'tags': 'subgenres', 'sub genres': 'subgenres', 'sub-genre': 'subgenres', 'sub-genres': 'subgenres',
-    'tone': 'tone',
-    'platform': 'platform', 'streaming': 'platform',
-    'lifecycle': 'lifecycle',
-    'progress': 'progress', 'episode': 'progress',
-    'notes': 'notes', 'note': 'notes',
-    'year': 'year', 'release date': 'year',
-    'date_watched': 'date_watched', 'date watched': 'date_watched', 'watched date': 'date_watched',
-    'last_watched': 'date_watched', 'last watched': 'date_watched', 'completed': 'date_watched',
-    'last_watched_date': 'date_watched', 'last watched date': 'date_watched', 'watched_date': 'date_watched',
+    'title': 'Title', 'name': 'Title',
+    'status': 'Status',
+    'format': 'Format', 'type': 'Format', 'title type': 'Format',
+    'genre': 'Primary_Genre', 'primary genre': 'Primary_Genre', 'genres': 'Primary_Genre',
+    'subgenres': 'Subgenre_Tags', 'subgenre': 'Subgenre_Tags', 'subgenre tags': 'Subgenre_Tags', 'tags': 'Subgenre_Tags', 'sub genres': 'Subgenre_Tags', 'sub-genre': 'Subgenre_Tags', 'sub-genres': 'Subgenre_Tags',
+    'tone': 'Tone',
+    'platform': 'Platform', 'streaming': 'Platform',
+    'lifecycle': 'Lifecycle',
+    'progress': 'Progress', 'episode': 'Progress',
+    'notes': 'Notes', 'note': 'Notes',
+    'year': 'Year', 'release date': 'Year',
+    'date_watched': 'Last_Watched_Date', 'date watched': 'Last_Watched_Date', 'watched date': 'Last_Watched_Date',
+    'last_watched': 'Last_Watched_Date', 'last watched': 'Last_Watched_Date', 'completed': 'Last_Watched_Date',
+    'last_watched_date': 'Last_Watched_Date', 'last watched date': 'Last_Watched_Date', 'watched_date': 'Last_Watched_Date',
     'date rated': '_ignore', 'date added': '_ignore',
     // IMDb columns to ignore
     'position': '_ignore', 'created': '_ignore',
     'modified': '_ignore', 'url': '_ignore', 'original title': '_ignore',
-    'runtime (mins)': 'runtime', 'runtime': 'runtime', 'runtime (min)': 'runtime',
+    'runtime (mins)': 'Runtime', 'runtime': 'Runtime', 'runtime (min)': 'Runtime',
     'num votes': '_ignore',
-    'const': 'imdbid',
+    'const': 'IMDb_ID',
   };
 
   // IMDb Title Type → our Format values
@@ -1166,7 +1166,7 @@ function importRows(rows, statusEl) {
 
     if (existing) {
       // Silently skip duplicates — same behaviour as paste import
-      duplicates.push(row.title);
+      duplicates.push(row.Title);
       let changed = false;
       for (const [k, v] of Object.entries(row)) {
         if (v && (existing[k] === undefined || existing[k] === '')) {
@@ -1177,20 +1177,20 @@ function importRows(rows, statusEl) {
       if (changed) updated++; else skipped++;
     } else {
       library.push({
-        title: row.title,
-        status: VALID_STATUSES.includes(row.status) ? row.status : 'Watchlist',
-        format: VALID_FORMATS.includes(row.format) ? row.format : '',
-        primary_genre: row.primary_genre || '',
-        subgenres: row.subgenres || '',
-        tone: row.tone || '',
-        platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
-        lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
-        progress: row.progress || '',
-        year: row.year || '',
-        notes: row.notes || '',
-        date_watched: row.date_watched || '',
-        imdbid: row.imdbid || row.imdb_id || '',
-        runtime: row.runtime || '',
+        Title: row.Title,
+        Status: VALID_STATUSES.includes(row.Status) ? row.Status : 'Watchlist',
+        Format: VALID_FORMATS.includes(row.Format) ? row.Format : '',
+        Primary_Genre: row.Primary_Genre || '',
+        Subgenre_Tags: row.Subgenre_Tags || '',
+        Tone: row.Tone || '',
+        Platform: VALID_PLATFORMS.includes(row.Platform) ? row.Platform : (row.Platform || ''),
+        Lifecycle: VALID_LIFECYCLE.includes(row.Lifecycle) ? row.Lifecycle : (row.Lifecycle || ''),
+        Progress: row.Progress || '',
+        Year: row.Year || '',
+        Notes: row.Notes || '',
+        Last_Watched_Date: row.Last_Watched_Date || '',
+        IMDb_ID: row.IMDb_ID || '',
+        Runtime: row.Runtime || '',
       });
       added++;
     }
@@ -1308,7 +1308,7 @@ function importRowsSilent(rows) {
     if (row.status && !VALID_STATUSES.includes(row.status)) badStatus.push(`${row.title}: "${row.status}"`);
     if (row.format && !VALID_FORMATS.includes(row.format)) badFormat.push(`${row.title}: "${row.format}"`);
     if (existing) {
-      duplicates.push(row.title);
+      duplicates.push(row.Title);
       let changed = false;
       for (const [k,v] of Object.entries(row)) {
         if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
@@ -1316,20 +1316,20 @@ function importRowsSilent(rows) {
       if (changed) updated++; else skipped++;
     } else {
       library.push({
-        title: row.title,
-        status: VALID_STATUSES.includes(row.status) ? row.status : 'Watchlist',
-        format: VALID_FORMATS.includes(row.format) ? row.format : '',
-        primary_genre: row.primary_genre || '',
-        subgenres: row.subgenres || '',
-        tone: row.tone || '',
-        platform: VALID_PLATFORMS.includes(row.platform) ? row.platform : (row.platform || ''),
-        lifecycle: VALID_LIFECYCLE.includes(row.lifecycle) ? row.lifecycle : (row.lifecycle || ''),
-        progress: row.progress || '',
-        year: row.year || '',
-        notes: row.notes || '',
-        date_watched: row.date_watched || '',
-        imdbid: row.imdb_id || '',
-        runtime: row.runtime || '',
+        Title: row.Title,
+        Status: VALID_STATUSES.includes(row.Status) ? row.Status : 'Watchlist',
+        Format: VALID_FORMATS.includes(row.Format) ? row.Format : '',
+        Primary_Genre: row.Primary_Genre || '',
+        Subgenre_Tags: row.Subgenre_Tags || '',
+        Tone: row.Tone || '',
+        Platform: VALID_PLATFORMS.includes(row.Platform) ? row.Platform : (row.Platform || ''),
+        Lifecycle: VALID_LIFECYCLE.includes(row.Lifecycle) ? row.Lifecycle : (row.Lifecycle || ''),
+        Progress: row.Progress || '',
+        Year: row.Year || '',
+        Notes: row.Notes || '',
+        Last_Watched_Date: row.Last_Watched_Date || '',
+        IMDb_ID: row.IMDb_ID || '',
+        Runtime: row.Runtime || '',
       });
       added++;
     }
@@ -1408,6 +1408,57 @@ function normalizePlatform(name) {
   return map[cleaned] || cleaned;
 }
 
+function formatProgress(val) {
+  if (!val) return '';
+  let s = String(val).trim();
+  
+  // 1. Check for S#E# or Season # Episode #
+  const seMatch = s.match(/^(?:s|season)\s*(\d+)\s*(?:e|episode)\s*(\d+)/i);
+  if (seMatch) {
+    return `Season ${seMatch[1]} (${seMatch[2]})`; // Hint for lookup
+  }
+
+  // 2. Normalize "S1", "s1", "Season 1" -> "Season 1"
+  const seasonMatch = s.match(/^(?:s|season)\s*(\d+)/i);
+  if (seasonMatch) {
+    const num = seasonMatch[1];
+    // Check if it already has the (#/#) format
+    if (s.match(/Season \d+ \(\d+\/\d+\)/i)) {
+      return `Season ${num} ${s.match(/\(\d+\/\d+\)/)[0]}`;
+    }
+    if (s.toLowerCase().includes('complete')) {
+      return `Season ${num} (complete)`;
+    }
+    return `Season ${num}`;
+  }
+  return s;
+}
+
+async function fetchSeasonEpisodeCount(title, seasonNum) {
+  const key = getTMDbKey();
+  if (!key) return null;
+  
+  // 1. Find the TV show ID
+  const searchUrl = `https://api.themoviedb.org/3/search/tv?api_key=${key}&query=${encodeURIComponent(title)}`;
+  try {
+    const sRes = await fetch(searchUrl);
+    const sData = await sRes.json();
+    if (!sData.results || !sData.results.length) return null;
+    
+    const tvId = sData.results[0].id;
+    
+    // 2. Get season details
+    const seasonUrl = `https://api.themoviedb.org/3/tv/${tvId}/season/${seasonNum}?api_key=${key}`;
+    const rRes = await fetch(seasonUrl);
+    const rData = await rRes.json();
+    
+    return rData.episodes ? rData.episodes.length : null;
+  } catch (e) {
+    console.error("Error fetching season episode count:", e);
+    return null;
+  }
+}
+
 async function detectToneAI(details, genres = []) {
   try {
     const API_KEY = getOpenAIKey();
@@ -1474,25 +1525,51 @@ return tone;
 // Migrates legacy field names on items loaded from old storage versions
 function normalizeLibrary() {
   library.forEach(item => {
-    // Migrate legacy 'genre' → 'primary_genre'
-    if (item.genre && !item.primary_genre) {
-      item.primary_genre = item.genre;
-    }
-    if (!item.primary_genre) item.primary_genre = '';
-    delete item.genre;
+    // Mapping of old keys to new canonical keys
+    const migrationMap = {
+      'title': 'Title',
+      'year': 'Year',
+      'imdbid': 'IMDb_ID',
+      'imdb_id': 'IMDb_ID',
+      'format': 'Format',
+      'lifecycle': 'Lifecycle',
+      'status': 'Status',
+      'progress': 'Progress',
+      'seasons_total': 'Seasons_Total',
+      'seasons': 'Seasons_Total',
+      'primary_genre': 'Primary_Genre',
+      'subgenres': 'Subgenre_Tags',
+      'subGenres': 'Subgenre_Tags',
+      'tone': 'Tone',
+      'platform': 'Platform',
+      'notes': 'Notes',
+      'date_watched': 'Last_Watched_Date',
+      'runtime': 'Runtime',
+      // Legacy variants
+      'genre': 'Primary_Genre',
+    };
 
-    // Migrate legacy camelCase 'subGenres' → 'subgenres'
-    if (item.subGenres && !item.subgenres) {
-      item.subgenres = item.subGenres;
+    for (const [oldKey, newKey] of Object.entries(migrationMap)) {
+      if (item[oldKey] !== undefined && item[newKey] === undefined) {
+        item[newKey] = item[oldKey];
+      }
     }
-    if (!item.subgenres) item.subgenres = '';
-    delete item.subGenres;
+
+    // Special case: Ensure episodes_total is removed
+    delete item.episodes_total;
+    
+    // Cleanup old keys (keep Title for now since it might be used in findByTitle during migration loops)
+    Object.keys(migrationMap).forEach(oldKey => {
+      if (oldKey !== migrationMap[oldKey] && oldKey !== 'Title') {
+        delete item[oldKey];
+      }
+    });
   });
 }
 
 function findByTitle(title) {
   const needle = normalizeTitle(title);
-  return library.find(x => x.title && normalizeTitle(x.title) === needle);
+  return library.find(x => x.Title && normalizeTitle(x.Title) === needle);
 }
 
 function levenshtein(a, b) {
@@ -1524,9 +1601,9 @@ function findByTitleFuzzy(title) {
   let bestScore = Infinity;
 
   for (const item of library) {
-    if (!item.title) continue;
+    if (!item.Title) continue;
 
-    const candidate = normalizeTitle(item.title);
+    const candidate = normalizeTitle(item.Title);
     const distance = levenshtein(needle, candidate);
 
     if (distance < bestScore) {
@@ -1577,14 +1654,20 @@ function resolveLibraryTitle(title) {
 
 function normalizeFields(fields) {
   const keyMap = {
-    'last_watched_date': 'date_watched', 'last watched date': 'date_watched',
-    'last_watched': 'date_watched', 'last watched': 'date_watched',
-    'watched_date': 'date_watched', 'watched date': 'date_watched',
-    'date watched': 'date_watched', 'completed': 'date_watched',
+    'last_watched_date': 'Last_Watched_Date', 'last watched date': 'Last_Watched_Date',
+    'last_watched': 'Last_Watched_Date', 'last watched': 'Last_Watched_Date',
+    'watched_date': 'Last_Watched_Date', 'watched date': 'Last_Watched_Date',
+    'date watched': 'Last_Watched_Date', 'completed': 'Last_Watched_Date',
+    'date_watched': 'Last_Watched_Date',
+    'title': 'Title', 'year': 'Year', 'imdbid': 'IMDb_ID', 'imdb_id': 'IMDb_ID',
+    'format': 'Format', 'lifecycle': 'Lifecycle', 'status': 'Status',
+    'progress': 'Progress', 'seasons_total': 'Seasons_Total', 'seasons': 'Seasons_Total',
+    'primary_genre': 'Primary_Genre', 'subgenres': 'Subgenre_Tags', 'subgenre_tags': 'Subgenre_Tags',
+    'tone': 'Tone', 'platform': 'Platform', 'notes': 'Notes', 'runtime': 'Runtime'
   };
   const out = {};
 for (const [k, v] of Object.entries(fields)) {
-  const lowerKey = k.toLowerCase();
+  const lowerKey = k.toLowerCase().trim();
   const value = v;
 
   // 🔥 SPECIAL HANDLING FOR GENRES
@@ -1596,8 +1679,8 @@ if (lowerKey === 'genres' && value) {
         .map(x => x.trim())
         .filter(Boolean);
 
-  out.primary_genre = arr[0] || '';
-  out.subgenres = arr.slice(1).join(', ');
+  out.Primary_Genre = arr[0] || '';
+  out.Subgenre_Tags = arr.slice(1).join(', ');
   continue;
 }
 
@@ -1605,23 +1688,23 @@ if (lowerKey === 'genres' && value) {
   out[norm] = value;
 }
 
-  // Do NOT back-populate legacy 'genre' field — always use primary_genre
-
-  if (out.platform) {
-  const p = out.platform.toLowerCase();
-
-  if (p.includes('apple')) out.platform = 'Apple TV';
-  else if (p.includes('netflix')) out.platform = 'Netflix';
-  else if (p.includes('prime')) out.platform = 'Prime';
+  if (out.Platform) {
+  const p = out.Platform.toLowerCase();
+  if (p.includes('apple')) out.Platform = 'Apple TV';
+  else if (p.includes('netflix')) out.Platform = 'Netflix';
+  else if (p.includes('prime')) out.Platform = 'Prime';
 }
 
-if (out.status) {
-  const s = out.status.toLowerCase();
+if (out.Status) {
+  const s = out.Status.toLowerCase();
+  if (s === 'watching') out.Status = 'Watching';
+  else if (s === 'watchlist') out.Status = 'Watchlist';
+  else if (s === 'watched') out.Status = 'Watched';
+  else if (s === 'abandoned') out.Status = 'Abandoned';
+}
 
-  if (s === 'watching') out.status = 'Watching';
-  else if (s === 'watchlist') out.status = 'Watchlist';
-  else if (s === 'watched') out.status = 'Watched';
-  else if (s === 'abandoned') out.status = 'Abandoned';
+if (out.Progress) {
+  out.Progress = formatProgress(out.Progress);
 }
   return out;
 }
@@ -1631,12 +1714,13 @@ async function applyUpdates(updates) {
   const skippedTitles = [];
   for (const op of updates) {
     console.log('ACTION VALUE:', op.action);
-    if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
-    const existing = findByTitle(op.title);
+    if (!op.Title && !op.title && !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
+    const title = op.Title || op.title;
+    const existing = findByTitle(title);
 if ((op.action || '').toLowerCase().trim() === 'update') {
-  if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
+  if (!existing) { skipped++; skippedTitles.push(title); continue; }
 const rawFields = op.fields || (() => {
-  const { action, title, ...rest } = op;
+  const { action, title, Title, ...rest } = op;
   return rest;
 })();
 
@@ -1644,32 +1728,56 @@ const rawFields = op.fields || (() => {
   
       const normalized = normalizeFields(rawFields);
 
-if (normalized.status) {
-  const s = normalized.status.toLowerCase().trim();
-  if (s === 'watching') normalized.status = 'Watching';
-  else if (s === 'watchlist') normalized.status = 'Watchlist';
-  else if (s === 'watched') normalized.status = 'Watched';
-  else if (s === 'abandoned') normalized.status = 'Abandoned';
+if (normalized.Status) {
+  const s = normalized.Status.toLowerCase().trim();
+  if (s === 'watching') normalized.Status = 'Watching';
+  else if (s === 'watchlist') normalized.Status = 'Watchlist';
+  else if (s === 'watched') normalized.Status = 'Watched';
+  else if (s === 'abandoned') normalized.Status = 'Abandoned';
 }
 
-Object.assign(existing, normalized);
-      console.log('AFTER UPDATE:', existing);
-      
-      updated++;
+// 🔥 G1: Async Progress Lookup
+if (normalized.Progress && normalized.Progress.includes('(')) {
+  const parts = normalized.Progress.match(/Season (\d+) \((\d+|complete)\)/i);
+  if (parts) {
+    const seasonNum = parts[1];
+    const watched = parts[2];
+    const count = await fetchSeasonEpisodeCount(title, seasonNum);
+    if (count) {
+      const watchedCount = (watched === 'complete') ? count : watched;
+      normalized.Progress = `Season ${seasonNum} (${watchedCount}/${count})`;
+      if (!existing || (existing && !existing.Seasons_Total)) {
+        normalized.Seasons_Total = seasonNum;
+      }
+    }
+  }
+} else if (normalized.Progress && normalized.Progress.startsWith('Season ') && !normalized.Progress.includes('(')) {
+  const seasonNum = normalized.Progress.match(/\d+/)[0];
+  const count = await fetchSeasonEpisodeCount(title, seasonNum);
+  if (count) {
+    normalized.Progress = `Season ${seasonNum} (1/${count})`; 
+  }
+}
+
+if (existing) {
+  Object.assign(existing, normalized);
+  console.log('AFTER UPDATE:', existing);
+  updated++;
+}
     } else if ((op.action || '').toLowerCase().trim() === 'delete') {
-      if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
+      if (!existing) { skipped++; skippedTitles.push(title); continue; }
       library.splice(library.indexOf(existing), 1);
       updated++;
     } else if ((op.action || '').toLowerCase().trim() === 'add') {
       if (existing) {
         // Title already exists — backfill any empty fields only
-        const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
+        const rawFields = op.fields || (() => { const { action, title, Title, ...rest } = op; return rest; })();
         const normalized = normalizeFields(rawFields);
         let changed = false;
         for (const [k,v] of Object.entries(normalized)) {
           if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
         }
-        if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
+        if (changed) updated++; else { skipped++; skippedTitles.push(title + ' (no empty fields)'); }
       } else {
         
         const rawFields = op.fields || op;
@@ -1679,24 +1787,22 @@ const normalized = normalizeFields(rawFields);
 console.log('NORMALIZED:', normalized);
 
 const newItem = {
-  title: op.title,
+  Title: title,
   ...normalized,
-  status: normalized.status || 'Watchlist'
+  Status: normalized.Status || 'Watchlist'
 };
 
-// 🔥 FETCH TMDB HERE (this is where it belongs)
+// 🔥 FETCH TMDB HERE
 const tmdbData = await 
-  fetchTMDbData(op.title);
+  fetchTMDbData(title);
 
 if (tmdbData?.results?.length) {
   const r = tmdbData.results[0];
 
   // Year
-  if (!newItem.year && (r.release_date || r.first_air_date)) {
-    newItem.year = (r.release_date || r.first_air_date).split("-")[0];
+  if (!newItem.Year && (r.release_date || r.first_air_date)) {
+    newItem.Year = (r.release_date || r.first_air_date).split("-")[0];
   }
-
-  // OPTIONAL: platform logic later if you want (but NOT required)
 }
 
 // ✅ ACTUALLY SAVE IT
@@ -1743,17 +1849,17 @@ return data;
 // ASSISTANT TAB
 // ============================================================
 function buildLibraryContext() {
-  const watching = library.filter(x=>x.status==='Watching');
-  const appletv = library.filter(x=>x.platform==='Apple TV' && x.status==='Watchlist');
-  const watched = library.filter(x=>x.status==='Watched').slice(-40);
-  const abandoned = library.filter(x=>x.status==='Abandoned');
-  const watchlist = library.filter(x=>x.status==='Watchlist').slice().reverse().slice(0,80);
-  const allTitles = library.map(x=>x.title).join('|');
+  const watching = library.filter(x=>x.Status==='Watching');
+  const appletv = library.filter(x=>x.Platform==='Apple TV' && x.Status==='Watchlist');
+  const watched = library.filter(x=>x.Status==='Watched').slice(-40);
+  const abandoned = library.filter(x=>x.Status==='Abandoned');
+  const watchlist = library.filter(x=>x.Status==='Watchlist').slice().reverse().slice(0,80);
+  const allTitles = library.map(x=>x.Title).join('|');
 
-  const fmt = arr => arr.map(x=>`${x.title} [${x.format||'?'}|${x.status}|${x.platform||'?'}|${x.primary_genre||'?'}|${x.tone||''}|${x.lifecycle||''}|${x.progress||''}|${x.year||''}|${x.imdbid||''}]`).join('\n');
+  const fmt = arr => arr.map(x=>`${x.Title} [${x.Format||'?'}|${x.Status}|${x.Platform||'?'}|${x.Primary_Genre||'?'}|${x.Tone||''}|${x.Lifecycle||''}|${x.Progress||''}|${x.Year||''}|${x.IMDb_ID||''}]`).join('\n');
 
   const incomplete = library
-    .filter(x => !x.format || !x.primary_genre || !x.year || !x.imdbid || (!x.lifecycle && x.format !== 'Movie'))
+    .filter(x => !x.Format || !x.Primary_Genre || !x.Year || !x.IMDb_ID || (!x.Lifecycle && x.Format !== 'Movie'))
     .slice().reverse().slice(0, 50);
 
   return `=== LIBRARY CONTEXT ===
@@ -1779,7 +1885,7 @@ ${incomplete.length ? fmt(incomplete) : 'None'}
 ALL TITLES (pipe-separated, for duplicate checking):
 ${allTitles || 'Empty library'}
 
-Format of each entry: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
+Format of each entry: Title [Format|Status|Platform|Genre|Subgenre_Tags|Tone|Lifecycle|Progress|Year|IMDb_ID]`;
 }
 
 const SYSTEM_PROMPT = `You are a personal watch tracker assistant managing the user's watchlist and making recommendations.
@@ -1814,16 +1920,17 @@ MODES:
   - Use 1–3 concise descriptors (e.g., Dark, Character-Driven, Gritty, Emotional, Cerebral)
   - Tone should almost never be blank
 - Leave fields blank only if uncertain
-- Output ONLY metadata fields
+- Output ONLY metadata fields using these EXACT canonical keys:
+  Title, Year, IMDb_ID, Format, Lifecycle, Status, Progress, Seasons_Total, Primary_Genre, Subgenre_Tags, Tone, Platform, Notes, Last_Watched_Date, Runtime
 - One line per field
-- Format EXACTLY: Field: Value
+- Format EXACTLY: Canonical_Field_Name: Value
 - Do NOT include any extra text before or after the fields
-- You MUST include ALL fields
+- You MUST include EVERY field listed above, INCLUDING Status even if unknown.
 - If a value is unknown, leave the VALUE empty after the colon (never write "unknown")
-- Example: Subgenres
-- Do NOT omit any fields
+- Do NOT omit any fields.
+- For SERIES progress, use "Season # (#/#)" format if znám, or "Season # (complete)" if marking finished.
 - After listing fields, ask for confirmation on a new line:
-Confirm add?
+Confirm add? (yes/no)
 
 2. SUGGESTION MODE (triggered when user asks for recommendations, ideas, or “what should I watch”):
 - You MAY use taste profile
@@ -1966,16 +2073,17 @@ if (typeof parsed === 'string') {
 
 const updates = Array.isArray(parsed) ? parsed : [parsed];
 updates.forEach(item => {
-  if (item.title && typeof item.title === 'string' && item.title === item.title.toLowerCase()) {
-    item.title = item.title.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  // Title case the Title if provided in lowercase
+  const tKey = item.Title ? 'Title' : (item.title ? 'title' : null);
+  if (tKey && typeof item[tKey] === 'string' && item[tKey] === item[tKey].toLowerCase()) {
+    item[tKey] = item[tKey].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 
-  if (item.genre && !item.primary_genre) {
+  // Canonicalize keys in the JSON itself before applying
+  if (item.genre && !item.Primary_Genre) {
     const parts = item.genre.split(',').map(s => s.trim()).filter(Boolean);
-
-    item.primary_genre = parts[0] || '';
-    item.subgenres = parts.slice(1).join(', ');
-
+    item.Primary_Genre = parts[0] || '';
+    item.Subgenre_Tags = parts.slice(1).join(', ');
     delete item.genre;
   }
 });
@@ -2007,16 +2115,16 @@ function getStatusRank(status) {
 
 function getMetadataScore(item) {
   let score = 0;
-  if (item.format)                    score++;
-  if (item.primary_genre || item.genre) score++;
-  if (item.subgenres || item.subGenres) score++;
-  if (item.tone)                      score++;
-  if (item.platform)                  score++;
-  if (item.lifecycle)                 score++;
-  if (item.year)                      score++;
-  if (item.runtime)                   score++;
-  if (item.seasons)                   score++;
-  if (item.imdbid)                    score++;
+  if (item.Format)          score++;
+  if (item.Primary_Genre)   score++;
+  if (item.Subgenre_Tags)   score++;
+  if (item.Tone)            score++;
+  if (item.Platform)        score++;
+  if (item.Lifecycle)       score++;
+  if (item.Year)            score++;
+  if (item.Runtime)         score++;
+  if (item.Seasons_Total)   score++;
+  if (item.IMDb_ID)         score++;
   return score;
 }
 
@@ -2026,7 +2134,7 @@ function getMetadataScore(item) {
 async function runBulkAutofill() {
   addTyping();
   
-  const AUTOFILL_FIELDS = ['format', 'status', 'progress', 'seasons', 'primary_genre', 'subgenres', 'tone', 'platform', 'year', 'runtime', 'lifecycle', 'imdbid'];
+  const AUTOFILL_FIELDS = ['Format', 'Status', 'Progress', 'Seasons_Total', 'Primary_Genre', 'Subgenre_Tags', 'Tone', 'Platform', 'Year', 'Runtime', 'Lifecycle', 'IMDb_ID'];
 
   let filledCount = 0;
   let sweptCount = 0;
@@ -2047,14 +2155,14 @@ async function runBulkAutofill() {
   for (const item of targets) {
     sweptCount++;
     try {
-      const tmdbData = await fetchTMDbData(item.title);
+      const tmdbData = await fetchTMDbData(item.Title);
       if (!tmdbData?.results?.length) continue;
 
       let afBest = tmdbData.results[0];
-      if (item.year) {
+      if (item.Year) {
         const yearExact = tmdbData.results.find(r =>
-          (r.title || r.name || '').toLowerCase() === (item.title||'').toLowerCase() &&
-          (r.release_date || r.first_air_date || '').startsWith(String(item.year))
+          (r.title || r.name || '').toLowerCase() === (item.Title||'').toLowerCase() &&
+          (r.release_date || r.first_air_date || '').startsWith(String(item.Year))
         );
         if (yearExact) afBest = yearExact;
       }
@@ -2074,7 +2182,7 @@ async function runBulkAutofill() {
           item[field] = newVal;
           filledCount++;
         } else if (oldVal.toLowerCase() !== newVal.toLowerCase()) {
-           if (['platform', 'format'].includes(field)) {
+           if (['Platform', 'Format'].includes(field)) {
              itemConflicts.push({ field, tmdb: newVal });
            }
         }
@@ -2084,7 +2192,7 @@ async function runBulkAutofill() {
         conflicts.push({ item, itemConflicts });
       }
     } catch (err) {
-      console.warn('Bulk autofill error on', item.title, err);
+      console.warn('Bulk autofill error on', item.Title, err);
     }
   }
 
@@ -2097,7 +2205,7 @@ async function runBulkAutofill() {
   let msg = `✨ **Sweep Complete**\nAnalyzed ${sweptCount} titles and successfully filled **${filledCount}** blank fields!`;
   
   if (conflicts.length > 0) {
-    let list = conflicts.map(c => `\u2022 **${c.item.title}**\n    ${c.itemConflicts.map(ic => `${ic.field}: "${c.item[ic.field]}" \u2192 "${ic.tmdb}"`).join('\n    ')}`).join('\n');
+    let list = conflicts.map(c => `\u2022 **${c.item.Title}**\n    ${c.itemConflicts.map(ic => `${ic.field}: "${c.item[ic.field]}" \u2192 "${ic.tmdb}"`).join('\n    ')}`).join('\n');
     msg += `\n\n⚠️ **Conflicts found!** TMDb has different values for these fields. Since you entered these manually, I haven't changed them yet.\n\n${list}\n\n**Apply TMDb values for these conflicts?** (yes/no)`;
     pendingBulkAutofillConflicts = conflicts;
   } else {
@@ -2131,45 +2239,45 @@ async function enrichFromTMDb(selected) {
     if (ca?.flatrate?.length)      platform = normalizePlatform(ca.flatrate[0].provider_name);
   } catch(e) { console.warn('Provider fetch failed:', e); }
 
-  const title  = details.name || details.title;
-  const year   = (details.first_air_date || details.release_date || '').split('-')[0];
-  let format   = 'Movie';
+  const Title  = details.name || details.title;
+  const Year   = (details.first_air_date || details.release_date || '').split('-')[0];
+  let Format   = 'Movie';
   if (endpoint === 'tv') {
-    format = (details.number_of_seasons === 1 && details.status === 'Ended') ? 'Miniseries' : 'Series';
+    Format = (details.number_of_seasons === 1 && details.status === 'Ended') ? 'Miniseries' : 'Series';
   }
 
   const genres = (details.genres?.map(g => g.name) || []);
   const normalizedGenres = genres.map(g =>
     (g === 'Science Fiction' || g === 'Sci-Fi & Fantasy') ? 'Sci-Fi' : g
   );
-  let primary_genre = normalizedGenres[0] || '';
-  if (normalizedGenres.includes('Sci-Fi')) primary_genre = 'Sci-Fi';
-  const subgenres = normalizedGenres.filter(g => g !== primary_genre).join(', ');
+  let Primary_Genre = normalizedGenres[0] || '';
+  if (normalizedGenres.includes('Sci-Fi')) Primary_Genre = 'Sci-Fi';
+  const Subgenre_Tags = normalizedGenres.filter(g => g !== Primary_Genre).join(', ');
 
-  const tone     = await detectToneAI(details, normalizedGenres);
-  const seasons  = endpoint === 'tv'    ? details.number_of_seasons : '';
-  const runtime  = endpoint === 'movie' ? details.runtime           : '';
+  const Tone          = await detectToneAI(details, normalizedGenres);
+  const Seasons_Total = endpoint === 'tv'    ? details.number_of_seasons : '';
+  const Runtime       = endpoint === 'movie' ? details.runtime           : '';
 
-  let lifecycle = '';
+  let Lifecycle = '';
   if (endpoint === 'tv') {
-    if (details.status === 'Returning Series') lifecycle = 'Ongoing';
-    else if (details.status === 'Ended')       lifecycle = 'Finished';
-    else if (details.status === 'Canceled')    lifecycle = 'Cancelled';
+    if (details.status === 'Returning Series') Lifecycle = 'Ongoing';
+    else if (details.status === 'Ended')       Lifecycle = 'Finished';
+    else if (details.status === 'Canceled')    Lifecycle = 'Cancelled';
   }
 
   // E3: Fetch IMDb ID
-  let imdbid = '';
+  let IMDb_ID = '';
   try {
     if (endpoint === 'movie') {
-      imdbid = details.imdb_id || '';
+      IMDb_ID = details.imdb_id || '';
     } else {
       const extRes = await fetch(`https://api.themoviedb.org/3/tv/${selected.id}/external_ids?api_key=${key}`);
       const extData = await extRes.json();
-      imdbid = extData.imdb_id || '';
+      IMDb_ID = extData.imdb_id || '';
     }
   } catch(e) { console.warn('IMDb ID fetch failed:', e); }
 
-  return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year, imdbid };
+  return { Title, Format, Primary_Genre, Subgenre_Tags, Tone, Platform: platform, Lifecycle, Seasons_Total, Runtime, Year, IMDb_ID };
 }
 
 async function sendMessage(userText) {
