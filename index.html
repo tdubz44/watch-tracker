@@ -1388,15 +1388,23 @@ function normalizeTitle(s) {
 }
 
 function normalizePlatform(name) {
-  if (!name) return "";
+  if (!name) return '';
+
+  // Strip rent/purchase store suffixes before matching
+  const cleaned = name.replace(/\s+(Store|on iTunes|Channels?)\s*$/i, '').trim();
 
   const map = {
-    "Amazon Prime Video": "Prime",
-    "Apple TV Plus": "Apple TV",
-    "Disney Plus": "Disney"
+    'Amazon Prime Video': 'Prime',
+    'Prime Video':        'Prime',
+    'Apple TV Plus':      'Apple TV',
+    'Apple TV':           'Apple TV',
+    'Disney Plus':        'Disney',
+    'Disney+':            'Disney',
+    'Crave':              'Crave',
+    'Netflix':            'Netflix',
   };
 
-  return map[name] || name;
+  return map[cleaned] || cleaned;
 }
 
 async function detectToneAI(details, genres = []) {
@@ -1531,6 +1539,25 @@ function findByTitleFuzzy(title) {
   }
 
   return null;
+}
+
+function isAffirmative(text) {
+  if (!text) return false;
+  const t = String(text).trim().toLowerCase();
+  return ['yes','y','ok','okay','confirm','sure','yep','yeah','yea','ya','go','apply','affirmative','add','update','merge','search'].includes(t);
+}
+
+function isNegative(text) {
+  if (!text) return false;
+  const t = String(text).trim().toLowerCase();
+  return ['no','n','cancel','nope'].includes(t);
+}
+
+function getBestCaseTitle(items) {
+  const titles = items.map(i => i.title).filter(Boolean);
+  if (!titles.length) return '';
+  // Prefer titles that aren't purely lowercase (picks proper case or at least uppercase)
+  return titles.find(t => t !== t.toLowerCase()) || titles[0];
 }
 
 function resolveLibraryTitle(title) {
@@ -1820,13 +1847,13 @@ RULES:
 - Flaf paywalled titles (such as Awake, The Kettering Incident) which require additional fee to rent or buy
 - Unclear Canadian availability: say so explicitly
 - When suggesting adding or updating items:
-  1. Show the proposed field values in plain text
+  1. State the TITLE clearly, followed by the proposed field values in plain text
   2. Include the <<<JSON>>> block in the SAME message
   3. End with "Confirm add?" or "Confirm update?" on the last line
   4. The app will hold the JSON and only apply it after the user says yes
 
-- Use EXACT field names when generating JSON:
-  title, format, status, platform, genre, tone, lifecycle, subgenres, year
+- Use EXACT field names when generating JSON (NEVER INCLUDE genre, primary_genre, or subgenres - these come ONLY from TMDb):
+  title, format, status, platform, tone, lifecycle, year
 
 - When reporting missing metadata:
   - Group titles by missing field combinations instead of listing each item individually
@@ -1845,9 +1872,7 @@ VALID FIELD VALUES:
 - Status: Watched, Watching, Watchlist, Abandoned
 - Format: Movie, Series, Miniseries
 - Platform (Canada): Netflix, Prime, Crave, Disney, Apple TV
-- Primary Genre (one): Comedy, Drama, Action, Sci-Fi, Documentary, Adventure, Crime, Animation, Horror, Romance, Fantasy, Mystery, Thriller
 - Lifecycle (Series/Miniseries only, never Movies): Finished, Ongoing, Cancelled
-- Subgenres: comma-separated tags, no tone words, no duplicating primary genre
 - Tone: separate field — e.g. Slow-Burn, Dark, Philosophical, Character-Driven, Cerebral, Atmospheric, Mind-Bending, Gritty
 
 When giving data updates respond EXACTLY like this:
@@ -1940,6 +1965,10 @@ if (typeof parsed === 'string') {
 
 const updates = Array.isArray(parsed) ? parsed : [parsed];
 updates.forEach(item => {
+  if (item.title && typeof item.title === 'string' && item.title === item.title.toLowerCase()) {
+    item.title = item.title.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
   if (item.genre && !item.primary_genre) {
     const parts = item.genre.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -1991,6 +2020,94 @@ function getMetadataScore(item) {
 }
 
 // ============================================================
+// ZERO-AI BULK AUTOFILL SCAN (B3 + F1)
+// ============================================================
+async function runBulkAutofill() {
+  addTyping();
+  
+  const AUTOFILL_FIELDS = ['format', 'status', 'progress', 'seasons', 'primary_genre', 'subgenres', 'tone', 'platform', 'year', 'runtime', 'lifecycle', 'imdbid'];
+
+  let filledCount = 0;
+  let sweptCount = 0;
+  let conflicts = [];
+
+  const targets = library.filter(i => {
+    return AUTOFILL_FIELDS.some(f => !i[f] || String(i[f]).trim() === '');
+  });
+
+  if (!targets.length) {
+    removeTyping();
+    addMsg('assistant', `✨ Your entire library is fully populated! No missing metadata found.`);
+    return;
+  }
+
+  addMsg('assistant', `🔄 Sweeping ${targets.length} titles with missing metadata... This runs silently via TMDb without using AI.`);
+
+  for (const item of targets) {
+    sweptCount++;
+    try {
+      const tmdbData = await fetchTMDbData(item.title);
+      if (!tmdbData?.results?.length) continue;
+
+      let afBest = tmdbData.results[0];
+      if (item.year) {
+        const yearExact = tmdbData.results.find(r =>
+          (r.title || r.name || '').toLowerCase() === (item.title||'').toLowerCase() &&
+          (r.release_date || r.first_air_date || '').startsWith(String(item.year))
+        );
+        if (yearExact) afBest = yearExact;
+      }
+
+      const enriched = await enrichFromTMDb(afBest);
+      if (!enriched) continue;
+
+      const itemConflicts = [];
+      
+      AUTOFILL_FIELDS.forEach(field => {
+        const oldVal = String(item[field] || '').trim();
+        const newVal = String(enriched[field] || '').trim();
+        
+        if (!newVal) return;
+        
+        if (!oldVal) {
+          item[field] = newVal;
+          filledCount++;
+        } else if (oldVal.toLowerCase() !== newVal.toLowerCase()) {
+           if (['platform', 'format'].includes(field)) {
+             itemConflicts.push({ field, tmdb: newVal });
+           }
+        }
+      });
+      
+      if (itemConflicts.length > 0) {
+        conflicts.push({ item, itemConflicts });
+      }
+    } catch (err) {
+      console.warn('Bulk autofill error on', item.title, err);
+    }
+  }
+
+  saveLibrary();
+  updateStats();
+  refreshSearch();
+  renderWatching();
+  removeTyping();
+
+  let msg = `✨ **Sweep Complete**\nAnalyzed ${sweptCount} titles and successfully filled **${filledCount}** blank fields!`;
+  
+  if (conflicts.length > 0) {
+    let flat = [];
+    conflicts.forEach(c => c.itemConflicts.forEach(ic => flat.push({item: c.item, field: ic.field, tmdb: ic.tmdb})));
+    msg += `\n\n⚠️ Found ${flat.length} discrepancies where your manual data differs from TMDb. Since you entered it manually, I left your data alone!`;
+    // We intentionally don't set pendingAutofill here because bulk conflict resolution is chaotic. Silent preservation of user data is safer.
+  } else {
+    msg += `\n\nNo conflicts found. Your library is clean!`;
+  }
+  
+  addMsg('assistant', msg);
+}
+
+// ============================================================
 // TMDB ENRICHMENT HELPER — shared by add flow + autofill (B2)
 // ============================================================
 async function enrichFromTMDb(selected) {
@@ -2012,8 +2129,6 @@ async function enrichFromTMDb(selected) {
     const providerData = await providerRes.json();
     const ca = providerData.results?.CA;
     if (ca?.flatrate?.length)      platform = normalizePlatform(ca.flatrate[0].provider_name);
-    else if (ca?.ads?.length)      platform = normalizePlatform(ca.ads[0].provider_name);
-    else if (ca?.rent?.length)     platform = normalizePlatform(ca.rent[0].provider_name);
   } catch(e) { console.warn('Provider fetch failed:', e); }
 
   const title  = details.name || details.title;
@@ -2042,7 +2157,19 @@ async function enrichFromTMDb(selected) {
     else if (details.status === 'Canceled')    lifecycle = 'Cancelled';
   }
 
-  return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year };
+  // E3: Fetch IMDb ID
+  let imdbid = '';
+  try {
+    if (endpoint === 'movie') {
+      imdbid = details.imdb_id || '';
+    } else {
+      const extRes = await fetch(`https://api.themoviedb.org/3/tv/${selected.id}/external_ids?api_key=${key}`);
+      const extData = await extRes.json();
+      imdbid = extData.imdb_id || '';
+    }
+  } catch(e) { console.warn('IMDb ID fetch failed:', e); }
+
+  return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year, imdbid };
 }
 
 async function sendMessage(userText) {
@@ -2065,7 +2192,7 @@ async function sendMessage(userText) {
   // A1: Clear stale pending states when user starts a new unrelated command
   const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup;
   if (hasPendingState) {
-    const isContinuation = /^(yes|y|ok|okay|confirm|no|n|cancel|add|search|update|[1-5])$/.test(reply);
+    const isContinuation = /^(yes|y|ok|okay|confirm|sure|yep|yeah|yea|ya|no|n|cancel|nope|add|search|update|merge|[1-5])$/i.test(reply.trim());
     if (!isContinuation) {
       pendingSelection = null;
       pendingDuplicate = null;
@@ -2079,7 +2206,7 @@ async function sendMessage(userText) {
   }
 
   if (pendingSelection && pendingSelection.newItem) {
-    if (['yes','y','ok','okay','confirm','add'].includes(reply)) {
+    if (isAffirmative(reply)) {
       library.push(pendingSelection.newItem);
       saveLibrary();
       updateStats();
@@ -2090,7 +2217,7 @@ async function sendMessage(userText) {
       return;
     }
 
-    if (['no','n','cancel'].includes(reply)) {
+    if (isNegative(reply)) {
       pendingSelection = null;
       addMsg('assistant', '❌ Cancelled.');
       return;
@@ -2105,7 +2232,7 @@ async function sendMessage(userText) {
 // ============================================================
 if (pendingDuplicate) {
 
-  if (['yes','y','ok','search'].includes(reply)) {
+  if (isAffirmative(reply)) {
 
     const tmdbData = await fetchTMDbData(pendingDuplicate.title);
 
@@ -2130,7 +2257,7 @@ if (pendingDuplicate) {
     return;
   }
 
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingDuplicate = null;
     addMsg('assistant', '👍 Okay, not adding.');
     return;
@@ -2144,7 +2271,7 @@ if (pendingDuplicate) {
 // PENDING DEDUP HANDLER
 // ============================================================
 if (pendingDedup) {
-  if (['yes','y','ok','okay','confirm','merge'].includes(reply)) {
+  if (isAffirmative(reply)) {
     const scope = typeof pendingDedup === 'object' ? pendingDedup.scope : null;
     let removed = 0;
 
@@ -2161,7 +2288,9 @@ if (pendingDedup) {
         const d = getStatusRank(b.status) - getStatusRank(a.status);
         return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
       });
-      library = [...keep, sorted[0]];
+      const winner = sorted[0];
+      winner.title = getBestCaseTitle(toMerge);
+      library = [...keep, winner];
       removed = toMerge.length - 1;
     } else {
       // Global dedup
@@ -2179,7 +2308,9 @@ if (pendingDedup) {
           const d = getStatusRank(b.status) - getStatusRank(a.status);
           return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
         });
-        mergedLibrary.push(sorted[0]);
+        const winner = sorted[0];
+        winner.title = getBestCaseTitle(items);
+        mergedLibrary.push(winner);
         removed += items.length - 1;
       }
       library = mergedLibrary;
@@ -2192,7 +2323,7 @@ if (pendingDedup) {
       : `✅ Removed ${removed} duplicate entr${removed === 1 ? 'y' : 'ies'}.`);
     return;
   }
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingDedup = false;
     addMsg('assistant', '👍 Okay, not merging duplicates.');
     return;
@@ -2204,7 +2335,7 @@ if (pendingDedup) {
 
 if (pendingDelete) {
 
-  if (['yes','y','confirm'].includes(reply)) {
+  if (isAffirmative(reply)) {
 
     library = library.filter(item => item !== pendingDelete);
 
@@ -2218,7 +2349,7 @@ if (pendingDelete) {
     return;
   }
 
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingDelete = null;
     addMsg('assistant', 'Cancelled.');
     return;
@@ -2232,7 +2363,7 @@ if (pendingDelete) {
 // PENDING AUTOFILL HANDLER (B1)
 // ============================================================
 if (pendingAutofill) {
-  if (['yes','y','ok','okay'].includes(reply)) {
+  if (isAffirmative(reply)) {
     for (const { field, tmdb } of pendingAutofill.conflicts) {
       pendingAutofill.item[field] = tmdb;
     }
@@ -2241,7 +2372,7 @@ if (pendingAutofill) {
     pendingAutofill = null;
     return;
   }
-  if (['no','n','cancel'].includes(reply)) {
+  if (isNegative(reply)) {
     pendingAutofill = null;
     addMsg('assistant', '✅ Kept your existing values. Only empty fields were filled.');
     return;
@@ -2380,7 +2511,7 @@ const newItem = {
       return;
     }
 
-    if (['no','n','cancel'].includes(reply)) {
+    if (isNegative(reply)) {
       pendingSelection = null;
       addMsg('assistant', '❌ Cancelled.');
       return;
@@ -2433,7 +2564,7 @@ if (mergeSpecificMatch && !/^merge\s+duplicates?$/i.test(reply)) {
 }
 
 // Global dedup: "remove/find/show/list/check/merge duplicates" or "merge" alone
-if (/^(remove|delete|find|show|list|check|merge)\s+duplicates?$/i.test(reply) || reply === 'merge') {
+if (/^(remove|delete|find|show|list|check|merge)\s+duplicates?$/i.test(reply.trim()) || /^merge$/i.test(reply.trim())) {
   const counts = {};
   for (const item of library) {
     const key = (item.title || '').toLowerCase();
@@ -2568,6 +2699,15 @@ if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith(
   addMsg('assistant', display);
   return;
   } // end else (library match found)
+}
+
+// ============================================================
+// BULK AUTOFILL COMMAND HANDLER (B3/F1)
+// ============================================================
+const bulkMatch = /^(autofill|fill|update|check|show|list|find)\s+(all(\s+missing)?|missing|empty|blank)(\s+(titles|metadata|data|platforms|fields|info))?$/i;
+if (bulkMatch.test(reply.trim())) {
+  runBulkAutofill();
+  return;
 }
 
 // ============================================================
@@ -2757,6 +2897,21 @@ if (eqMatch) {
   else if (['series','show','tv show','tv'].includes(valLower))   { field = 'format'; normalizedValue = 'Series'; }
   else if (['movie','film'].includes(valLower))                   { field = 'format'; normalizedValue = 'Movie'; }
   else if (['documentary','doc'].includes(valLower))              { field = 'format'; normalizedValue = 'Documentary'; }
+  
+  // Progress & generic catch-all for unknown values if the title explicitly included a field word
+  else {
+    // Check if the raw title part ends with " progress", " format", etc. to infer field.
+    // e.g., "Outlander progress = s7" -> rawTitle: "Outlander progress", rawValue: "s7"
+    const words = rawTitle.toLowerCase().split(' ');
+    const lastWord = words.pop();
+    const VALID_FIELDS = ['progress', 'season', 'seasons', 'format', 'status', 'platform', 'year', 'note', 'notes'];
+    if (VALID_FIELDS.includes(lastWord)) {
+      field = lastWord === 'season' || lastWord === 'seasons' ? 'progress' : lastWord;
+      if (field === 'note') field = 'notes';
+      normalizedValue = rawValue;
+      rawTitle = words.join(' '); // Strip the field word from title
+    }
+  }
 
   if (field) {
     // Resolve best library match — prefer higher status rank + metadata score when dupes exist
@@ -2766,7 +2921,7 @@ if (eqMatch) {
           const d = getStatusRank(b.status) - getStatusRank(a.status);
           return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
         })[0]
-      : resolveLibraryTitle(rawTitle);
+      : resolveLibraryTitle(rawTitle).item;
 
     if (!target) {
       addMsg('assistant', `❌ "${rawTitle}" not found in your library.`);
@@ -2785,19 +2940,22 @@ if (eqMatch) {
 
   // pendingAIConfirmation handler
   let confirmOverride = '';
-  // A4: If user types a new command while confirmation is pending, break out
-  if (pendingAIConfirmation && /^(merge|remove|delete|add|autofill|update|check|show|list|find|recommend|dedup|clear)\b/i.test(reply)) {
-    pendingAIConfirmation = false;
-    // fall through to normal command handlers below
-  }
-
+  
+  // Handle explicit confirmation or cancellation FIRST
   if (pendingAIConfirmation) {
-    if (['no','n','cancel'].includes(reply)) {
+    const rLower = reply.toLowerCase();
+    
+    // Exact word matches for confirmation replies
+    const affirmatives = ['yes','y','ok','okay','confirm','sure','yep','yeah','yea','ya','add','update','go','apply','affirmative'];
+    const negatives = ['no','n','cancel','nope'];
+
+    if (negatives.includes(rLower)) {
       pendingAIConfirmation = false;
       addMsg('assistant', '\u274c No changes made.');
       return;
     }
-    if (['yes','y','ok','okay','confirm'].includes(reply)) {
+    
+    if (affirmatives.includes(rLower)) {
       if (pendingAIConfirmation.deferred_text) {
         // Apply the stored JSON directly — no second API call needed
         const result = parseAndApplyJSON(pendingAIConfirmation.deferred_text);
@@ -2809,6 +2967,12 @@ if (eqMatch) {
       confirmOverride = '\n[SYSTEM NOTE: User confirmed. Output <<<JSON>>> NOW to apply the change. No summary, no confirmation prompt.]\n';
       pendingAIConfirmation = false;
     }
+  }
+
+  // A4: If no confirmation matched and they typed a command, break out of confirmation
+  if (pendingAIConfirmation && /^(merge|remove|delete|add|autofill|update|check|show|list|find|recommend|dedup|clear)\b/i.test(reply)) {
+    pendingAIConfirmation = false;
+    // fall through to normal command handlers below
   }
 
   try {
