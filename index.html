@@ -1630,82 +1630,66 @@ async function applyUpdates(updates) {
   let added=0, updated=0, skipped=0;
   const skippedTitles = [];
   for (const op of updates) {
-    console.log('ACTION VALUE:', op.action);
     if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
     const existing = findByTitle(op.title);
-if ((op.action || '').toLowerCase().trim() === 'update') {
-  if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
-const rawFields = op.fields || (() => {
-  const { action, title, ...rest } = op;
-  return rest;
-})();
+    const action = (op.action || '').toLowerCase().trim();
 
-  console.log('RAW FIELDS AFTER STRIP:', rawFields);
-  
+    if (action === 'update') {
+      if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
+      const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
       const normalized = normalizeFields(rawFields);
 
-if (normalized.status) {
-  const s = normalized.status.toLowerCase().trim();
-  if (s === 'watching') normalized.status = 'Watching';
-  else if (s === 'watchlist') normalized.status = 'Watchlist';
-  else if (s === 'watched') normalized.status = 'Watched';
-  else if (s === 'abandoned') normalized.status = 'Abandoned';
-}
+      // --- G1: Async Progress Normalization ---
+      if (normalized.progress) {
+        normalized.progress = await normalizeProgressValue(existing, normalized.progress);
+      }
 
-Object.assign(existing, normalized);
-      console.log('AFTER UPDATE:', existing);
-      
+      Object.assign(existing, normalized);
       updated++;
-    } else if ((op.action || '').toLowerCase().trim() === 'delete') {
+    } else if (action === 'delete') {
       if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
       library.splice(library.indexOf(existing), 1);
       updated++;
-    } else if ((op.action || '').toLowerCase().trim() === 'add') {
+    } else if (action === 'add') {
       if (existing) {
         // Title already exists — backfill any empty fields only
         const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
         const normalized = normalizeFields(rawFields);
+        
+        // --- G1: Async Progress Normalization ---
+        if (normalized.progress) {
+          normalized.progress = await normalizeProgressValue(existing, normalized.progress);
+        }
+
         let changed = false;
         for (const [k,v] of Object.entries(normalized)) {
           if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
         }
         if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
       } else {
-        
         const rawFields = op.fields || op;
-console.log('RAW FIELDS:', rawFields);
+        const normalized = normalizeFields(rawFields);
+        const newItem = { title: op.title, ...normalized, status: normalized.status || 'Watchlist' };
 
-const normalized = normalizeFields(rawFields);
-console.log('NORMALIZED:', normalized);
+        // 🔥 FETCH TMDB DATA
+        const tmdbData = await fetchTMDbData(op.title);
+        if (tmdbData?.results?.length) {
+          const r = tmdbData.results[0];
+          if (!newItem.year && (r.release_date || r.first_air_date)) {
+            newItem.year = (r.release_date || r.first_air_date).split("-")[0];
+          }
+        }
 
-const newItem = {
-  title: op.title,
-  ...normalized,
-  status: normalized.status || 'Watchlist'
-};
+        // --- G1: Async Progress Normalization ---
+        if (newItem.progress) {
+          newItem.progress = await normalizeProgressValue(newItem, newItem.progress);
+        }
 
-// 🔥 FETCH TMDB HERE (this is where it belongs)
-const tmdbData = await 
-  fetchTMDbData(op.title);
-
-if (tmdbData?.results?.length) {
-  const r = tmdbData.results[0];
-
-  // Year
-  if (!newItem.year && (r.release_date || r.first_air_date)) {
-    newItem.year = (r.release_date || r.first_air_date).split("-")[0];
-  }
-
-  // OPTIONAL: platform logic later if you want (but NOT required)
-}
-
-// ✅ ACTUALLY SAVE IT
-library.push(newItem);
-added++;
-        
+        library.push(newItem);
+        added++;
       }
+    }
   }
-}
   return { added, updated, skipped, skippedTitles };
 }
 
@@ -1737,6 +1721,86 @@ return data;
     console.error("TMDb fetch error:", err);
     return null;
   }
+}
+
+async function fetchTMDbIdFromIMDb(imdbId) {
+  const key = getTMDbKey();
+  if (!key || !imdbId) return null;
+  const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${key}&external_source=imdb_id`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const result = data.tv_results?.[0] || data.movie_results?.[0];
+    return result ? result.id : null;
+  } catch (e) {
+    console.warn("TMDb ID find failed:", e);
+    return null;
+  }
+}
+
+async function fetchSeasonEpisodeCount(tmdbId, seasonNum) {
+  const key = getTMDbKey();
+  if (!key || !tmdbId || !seasonNum) return null;
+  const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNum}?api_key=${key}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.episodes ? data.episodes.length : null;
+  } catch (e) {
+    console.warn("TMDb season fetch failed:", e);
+    return null;
+  }
+}
+
+async function normalizeProgressValue(item, newVal) {
+  if (!newVal || typeof newVal !== 'string') return newVal;
+
+  // Pattern: Season 2, S2, Season 2 (10/10), S2 complete, etc.
+  const regex = /(?:Season|S)\s*(\d+)(?:\s*\((\d+)\/(\d+)\))?/i;
+  const match = newVal.match(regex);
+  if (!match) return newVal;
+
+  const seasonNum = match[1];
+  let watched = match[2];
+  let total = match[3];
+
+  // If already in Season X (Y/Z) format AND we have the total, just ensure it's "Season X"
+  if (watched && total) {
+    return `Season ${seasonNum} (${watched}/${total})`;
+  }
+
+  // If it's a TV series or Miniseries, we want to fetch the total
+  if (item.format === 'Movie') return newVal;
+
+  console.log(`📍 Normalizing progress for "${item.title}" Season ${seasonNum}...`);
+
+  let tmdbId = null;
+  if (item.imdbid) {
+    tmdbId = await fetchTMDbIdFromIMDb(item.imdbid);
+  }
+
+  // If no tmdbId from IMDb, try title search as fallback
+  if (!tmdbId) {
+    const searchRes = await fetchTMDbData(item.title);
+    if (searchRes?.results?.length) {
+      // Find exact or best title/year match
+      const best = searchRes.results.find(r => 
+        (r.title || r.name || '').toLowerCase() === (item.title || '').toLowerCase()
+      ) || searchRes.results[0];
+      tmdbId = best.id;
+    }
+  }
+
+  if (tmdbId) {
+    const fetchedTotal = await fetchSeasonEpisodeCount(tmdbId, seasonNum);
+    if (fetchedTotal) {
+      // Per user: "S2 means the entire season" -> default to full completion
+      return `Season ${seasonNum} (${fetchedTotal}/${fetchedTotal})`;
+    }
+  }
+
+  // Fallback if TMDb fails or no match found
+  return `Season ${seasonNum} (complete)`;
 }
 
 // ============================================================
