@@ -1631,53 +1631,32 @@ async function applyUpdates(updates) {
   const skippedTitles = [];
   for (const op of updates) {
     if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
-    const existing = findByTitle(op.title);
+    
+    // Normalize input title for robust lookup
+    const searchTitle = String(op.title).trim();
+    const existing = findByTitle(searchTitle);
     const action = (op.action || '').toLowerCase().trim();
 
-    if (action === 'update') {
-      if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
+    // 🏆 SMART UPSERT: If update requested for missing item, add it.
+    if (action === 'update' || action === 'add') {
       const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
       const normalized = normalizeFields(rawFields);
 
-      // --- G1: Async Progress Normalization ---
-      if (normalized.progress) {
-        normalized.progress = await normalizeProgressValue(existing, normalized.progress);
-      }
-
-      Object.assign(existing, normalized);
-      updated++;
-    } else if (action === 'delete') {
-      if (!existing) { skipped++; skippedTitles.push(op.title); continue; }
-      library.splice(library.indexOf(existing), 1);
-      updated++;
-    } else if (action === 'add') {
       if (existing) {
-        // Title already exists — backfill any empty fields only
-        const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
-        const normalized = normalizeFields(rawFields);
-        
         // --- G1: Async Progress Normalization ---
         if (normalized.progress) {
           normalized.progress = await normalizeProgressValue(existing, normalized.progress);
         }
 
-        let changed = false;
-        for (const [k,v] of Object.entries(normalized)) {
-          if (v && (existing[k] === undefined || existing[k] === '')) { existing[k] = v; changed = true; }
-        }
-        if (changed) updated++; else { skipped++; skippedTitles.push(op.title + ' (no empty fields)'); }
+        Object.assign(existing, normalized);
+        updated++;
       } else {
-        const rawFields = op.fields || op;
-        const normalized = normalizeFields(rawFields);
-        const newItem = { title: op.title, ...normalized, status: normalized.status || 'Watchlist' };
+        // New item (even if action was 'update')
+        const newItem = { title: searchTitle, ...normalized, status: normalized.status || 'Watchlist' };
 
-        // 🔥 FETCH TMDB DATA
-        const tmdbData = await fetchTMDbData(op.title);
-        if (tmdbData?.results?.length) {
-          const r = tmdbData.results[0];
-          if (!newItem.year && (r.release_date || r.first_air_date)) {
-            newItem.year = (r.release_date || r.first_air_date).split("-")[0];
-          }
+        // 🔥 FETCH TMDB DATA if missing core fields
+        if (!newItem.year || !newItem.primary_genre) {
+          await enrichItemFromTMDb(newItem); 
         }
 
         // --- G1: Async Progress Normalization ---
@@ -1687,6 +1666,13 @@ async function applyUpdates(updates) {
 
         library.push(newItem);
         added++;
+      }
+    } else if (action === 'delete') {
+      if (!existing) { skipped++; skippedTitles.push(searchTitle); continue; }
+      const idx = library.indexOf(existing);
+      if (idx > -1) {
+        library.splice(idx, 1);
+        updated++; // treat delete as an update for count
       }
     }
   }
@@ -2160,7 +2146,7 @@ function getMetadataScore(item) {
 function generateMetadataPreview(item) {
   let display = `**${item.title}** (${item.year || '?'})`;
   if (item.format)        display += `\nFormat: ${item.format}`;
-  if (item.status)        display += `\nStatus: ${item.status}`;
+  display += `\nStatus: ${item.status || 'Watchlist'}`; // Default to Watchlist for preview
   if (item.primary_genre) display += `\nGenre: ${item.primary_genre}`;
   if (item.subgenres)     display += `\nSub-genres: ${item.subgenres}`;
   if (item.tone)          display += `\nTone: ${item.tone}`;
@@ -3235,7 +3221,17 @@ if (eqMatch) {
         }
 
         pendingAIConfirmation = false;
-        addMsg('assistant', (result && (result.added || result.updated)) ? `\u2705 Applied.` : '\u2705 Done.', !!result);
+        
+        let msg = "";
+        if (result) {
+          if (result.added > 0 || result.updated > 0) msg = `\u2705 Applied. (${result.added} added, ${result.updated} updated)`;
+          else if (result.skipped > 0) msg = `\u26a0\ufe0f Skipped: ${result.skippedTitles.join(', ')}`;
+          else msg = `\u2705 Done.`;
+        } else {
+          msg = `\u2705 Done.`;
+        }
+        
+        addMsg('assistant', msg, !!result);
         return;
       }
       // Fallback: no stored JSON, inject override for second AI call
