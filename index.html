@@ -1818,9 +1818,9 @@ MODES:
 - One line per field
 - Format EXACTLY: Field: Value
 - Do NOT include any extra text before or after the fields
-- You MUST include ALL fields
+- You MUST include ALL fields: Title, Format, Status, Platform, Tone, Lifecycle, Year
 - If a value is unknown, leave the VALUE empty after the colon (never write "unknown")
-- Example: Subgenres
+- Example: Status: Watchlist
 - Do NOT omit any fields
 - After listing fields, ask for confirmation on a new line:
 Confirm add?
@@ -2528,6 +2528,7 @@ const newItem = {
 
       let display = `Title: ${title}`;
       if (type) display += `\nFormat: ${type}`;
+      if (newItem.status) display += `\nStatus: ${newItem.status}`;
       if (primaryGenre) display += `\nGenre: ${primaryGenre}`;
       if (subGenres) display += `\nSub-genres: ${subGenres}`;
       if (tone) display += `\nTone: ${tone}`;
