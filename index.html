@@ -2255,6 +2255,13 @@
         return bestMatch;
       }
 
+      // Substring fallback: "Silo" matches "Silo (2023)"
+      const subMatch = library.find(item => {
+        const can = normalizeTitle(item.title);
+        return (can.includes(needle) || needle.includes(can)) && Math.abs(can.length - needle.length) < 10;
+      });
+      if (subMatch) return subMatch;
+
       return null;
     }
 
@@ -3109,7 +3116,8 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // 📝 THE UNIFIED COMMAND ENGINE (v18)
       // Matches both explicit verbs (mark, add, delete) and assignments (Silo = watched)
-      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)(?:\s+(?:as|to|status|platform|progress|format|tone|notes|lifecycle|year|runtime|genre|genres|subgenre|subgenres|season|seasons))?\s*[=:]?\s*(.*)$/i;
+      // Group 1: Verb, Group 2: Title & Field, Group 3: Value
+      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)\s*[=:]?\s*(.*)$/i;
       const cmdMatch = userText.match(cmdRegex);
 
       if (cmdMatch && isNewCommand) {
