@@ -1290,14 +1290,49 @@
         addMsg('assistant', "⚠️ Nothing to undo in this session.");
         return;
       }
+      
+      const currentLib = JSON.parse(JSON.stringify(library));
       const prevState = historyStack.pop();
       try {
-        library = JSON.parse(prevState);
+        const restoredLib = JSON.parse(prevState);
+        
+        // Simple diff for reporting
+        let diffMsg = "Restored your library to the previous state.";
+        const changes = [];
+        
+        // Check for specific field changes in existing titles
+        currentLib.forEach(currItem => {
+           const restItem = restoredLib.find(ri => ri.title === currItem.title);
+           if (restItem) {
+             const fields = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+             fields.forEach(f => {
+               if (currItem[f] !== restItem[f]) {
+                 const oldVal = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : currItem[f];
+                 const newVal = (restItem[f] === undefined || restItem[f] === null || String(restItem[f]).trim() === '') ? 'none' : restItem[f];
+                 changes.push(`**${currItem.title}** ${f}: "${oldVal}" \u2192 "**${newVal}**"`);
+               }
+             });
+           }
+        });
+        
+        // Check for added/removed titles
+        const restoredTitles = restoredLib.filter(ri => !currentLib.some(ci => ci.title === ri.title));
+        const removedTitles = currentLib.filter(ci => !restoredLib.some(ri => ri.title === ci.title));
+        
+        restoredTitles.forEach(t => changes.push(`\u2705 Restored deleted title: **${t.title}**`));
+        removedTitles.forEach(t => changes.push(`\ud83d\uddd1\ufe0f Removed added title: **${t.title}**`));
+
+        if (changes.length > 0) {
+          diffMsg = `\u21ba\ufe0f **Undo successful**:\n- ${changes.slice(0, 5).join('\n- ')}`;
+          if (changes.length > 5) diffMsg += `\n...and ${changes.length - 5} more changes.`;
+        }
+
+        library = restoredLib;
         await saveLibrary();
         updateStats();
         refreshSearch();
         renderWatching();
-        addMsg('assistant', "🔄 **Undo successful**: Restored your library to the previous state.");
+        addMsg('assistant', diffMsg);
       } catch (e) {
         console.error("Undo failed:", e);
         addMsg('assistant', "⚠️ Error during undo.");
@@ -2551,9 +2586,7 @@
 
       const seasonNum = exeyMatch ? exeyMatch[1] : match[1];
       let watched = exeyMatch ? exeyMatch[2] : (match ? match[2] : null);
-      let total = match ? match[3] : null;
 
-      // If we have watched but no total, or it's just "Season X", we need TMDb
       if (item.format === 'Movie') return newVal;
 
       console.log(`📍 Normalizing progress for "${item.title}" Season ${seasonNum}...`);
@@ -2583,7 +2616,7 @@
       }
 
       // Fallback
-      return watched ? `Season ${seasonNum} (${watched}/?)` : `Season ${seasonNum} (complete)`;
+      return watched ? `Season ${seasonNum} (${watched}/?)` : `Season ${seasonNum}`;
     }
 
     // ============================================================
@@ -2591,10 +2624,10 @@
     // ============================================================
     function buildLibraryContext() {
       const watching = library.filter(x => x.status === 'Watching');
+      const watchlist = library.filter(x => x.status === 'Watchlist').slice().reverse().slice(0, 100);
       const appletv = library.filter(x => x.platform === 'Apple TV' && x.status === 'Watchlist');
       const watched = library.filter(x => x.status === 'Watched').slice(-40);
       const abandoned = library.filter(x => x.status === 'Abandoned');
-      const watchlist = library.filter(x => x.status === 'Watchlist').slice().reverse().slice(0, 80);
       const allTitles = library.map(x => x.title).join('|');
 
       const fmt = arr => arr.map(x => `${x.title} [${x.format || '?'}|${x.status}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`).join('\n');
@@ -2605,8 +2638,14 @@
 
       return `=== LIBRARY CONTEXT ===
 
+ALL TITLES (100% COVERAGE — NEVER recommend these):
+${allTitles || 'Empty library'}
+
 CURRENTLY WATCHING (${watching.length}):
 ${watching.length ? fmt(watching) : 'None'}
+
+WATCHLIST (most recent 100):
+${watchlist.length ? fmt(watchlist) : 'None'}
 
 APPLE TV WATCHLIST (${appletv.length}):
 ${appletv.length ? fmt(appletv) : 'None'}
@@ -2617,68 +2656,49 @@ ${watched.length ? fmt(watched) : 'None'}
 ABANDONED:
 ${abandoned.length ? fmt(abandoned) : 'None'}
 
-WATCHLIST (most recent 80):
-${watchlist.length ? fmt(watchlist) : 'None'}
-
-RECENTLY ADDED / INCOMPLETE (missing format, genre, platform or lifecycle — newest first, max 50):
+RECENTLY ADDED / INCOMPLETE:
 ${incomplete.length ? fmt(incomplete) : 'None'}
 
-ALL TITLES (pipe-separated, for duplicate checking):
-${allTitles || 'Empty library'}
-
-Format of each entry: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
+Format: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
     }
 
     const SYSTEM_PROMPT = `You are the WatchTracker Assistant.
 Your goal is to help the user manage their media library and discover their next favorite show through conversational "Intent Parsing" and expert-level recommendations.
 
 ### 1. TASTE PROFILE (The Source of Truth for Recommendations)
-- **Core**: Character-driven sci-fi mysteries where reality slowly reveals its rules.
-- **Lane 1 (Strongest)**: Reality-instability sci-fi — Dark, Severance, Fringe, The OA, The Devil's Hour, From.
-- **Lane 2**: Philosophical speculative sci-fi — Arrival, Ex Machina, Children of Men, The Expanse.
-- **Lane 3**: High-concept genre comedy — Upload, Extraordinary.
-- **Themes**: Time loops, Parallel realities, Identity-bending, Reality instability, Memory manipulation, Cosmic/metaphysical sci-fi, Puzzle-box storytelling.
-- **Viewing style**: Serial immersion, movies as palette cleansers, concept-first, slow burn OK.
-- **NEVER recommend**: Low-concept procedurals, sitcoms without genre hook, reality TV.
-- **Fave Actor**: Miles Teller — flag relevant titles he is in.
+- **Core Interests**: Character-driven sci-fi mysteries where reality slowly reveals its rules (Pulse-box storytelling).
+- **Lane 1 (The Core)**: Reality-instability sci-fi — Dark, Severance, Fringe, The OA, The Devil's Hour, From.
+- **Lane 2 (Philosophical)**: Speculative sci-fi — Arrival, Ex Machina, Children of Men, The Expanse.
+- **Lane 3 (Occasional)**: High-concept genre comedy — Upload, Extraordinary.
+- **Themes**: Time loops, Parallel realities, Identity-bending, Memory manipulation, Cosmic/metaphysical sci-fi.
+- **Miles Teller**: Your favorite actor. Always flag if a title features him.
 
-### 2. YOUR CORE ROLE: THE TRANSLATOR
-- You translate natural language (e.g., "Add the Miles Teller show") into standard JSON update blocks.
-- **NEVER** apply changes directly in your text. **ALWAYS** use the <<<JSON [...] JSON>>> format.
-- **ZERO-NORMALIZATION RULE**: You do NOT need to worry about data formatting or spelling (e.g., "apple" vs "Apple TV"). The local code handles all cleanup. You just provide the raw intent.
+### 2. CORE ROLE: THE TRANSLATOR
+- Translate natural language into a JSON update block.
+- **HYGIENE RULE**: Before recommending or adding, check the **ALL TITLES** list at the top of the context. If it's already in the library, mention that you see it's there instead of recommending it as new.
+- **ZERO-FORMATTING RULE**: Focus 100% on the conversation and the intent. Do **NOT** type out metadata tables or long lists of attributes in your text; the local code will show a "Proposed Change" preview automatically.
 
-### 3. DATA FORMAT
-Provide updates in this format:
+### 3. RECOMMENDATION MODE (The Gatekeeper)
+- **THE HARD FILTER**: Use the **ALL TITLES** list at the top of your context. **NEVER** recommend a title that is already in the library as "Watched" or "Abandoned".
+- **SMART PRIORITIZATION (Context-First)**:
+    - **Step 1**: Check the **Watching** and **Watchlist** categories first.
+    - **Step 2**: Only suggest titles from these lists if they **fit the user's specific mood/requirement** (e.g., if they ask for "something light," do NOT suggest a dark show even if it has new episodes).
+    - **Step 3**: If a show in these lists fits the mood **and** has new episodes (e.g. S2 E0/10), suggest it as the top priority.
+    - **Step 4**: If NOTHING in your existing lists fits the request, search your internal knowledge for a **New Discover** (a title NOT in the ALL TITLES list).
+- **EXPERT CRITIQUE**: Explain *why* a show matches (e.g. "Since you liked the reality-bending in Season 1...").
+- Suggest 1–3 titles max.
+
+### 4. DATA FORMAT
 <<<JSON
 [
   {
-    "action": "add" | "update" | "delete",
     "title": "Exact Title",
-    "fields": {
-      "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
-      "progress": "S1E1",
-      "platform": "Service Name",
-      "format": "Movie" | "Series" | "Miniseries",
-      "tone": "Gritty, Dark",
-      "lifecycle": "Ongoing",
-      "year": "2024"
-    }
+    "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
+    "progress": "Season 1 (5/10)",
+    "platform": "Prime"
   }
 ]
-JSON>>>
-
-### 4. RECOMMENDATION MODE (Suggestion Mode)
-- Use the Taste Profile to suggest 1–3 strong titles max.
-- Be an expert. Don't just list titles; explain *why* it matches their Lanes or Themes.
-- **NEVER** recommend titles already in the library as "Watched" or "Abandoned".
-
-### 5. INTERROGATION MODE
-- If the user says "Update Silo" but doesn't specify WHAT, ask: "What would you like to update for Silo? (Status, Progress, etc.)"
-- If the user provides a partial progress like "S4," ask for the specific episode number.
-
-### 6. CORRECTION HANDLING
-- If the user says "No, actually [correction]," update your mental model for that specific title and provide the corrected JSON.
-- If the user says "undo" or "revert," tell them "Restoring the previous state locally..." but note that the local code handles the actual data restoration.`;
+JSON>>>`;
 
     function addMsg(role, text, jsonApplied) {
       const chatWindow = document.getElementById('chatWindow');
@@ -3072,17 +3092,38 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         } catch (e) { console.warn("JSON parse failed, falling through to AI."); }
       }
 
-      // ➕ ADD COMMAND INTERCEPTOR (Bypasses AI)
+      // ➕ ADD COMMAND INTERCEPTOR (Restored TMDb Logic)
       const addMatch = userText.match(/^add\s+([^=:]+)$/i);
       if (addMatch && !pendingAIConfirmation && !pendingUpdate) {
         const title = addMatch[1].trim().replace(/^["']+|["']+$/g, '');
-        // applyUpdates handles its own saveHistoryState()
+        
+        // 1. Duplicate Check
+        const existing = resolveLibraryTitle(title);
+        if (existing.item) {
+          addMsg('assistant', `\u26a0\ufe0f **${existing.item.title}** is already in your library (${existing.item.status}).`);
+          lastDiscussedTitle = existing.item.title;
+          return;
+        }
+
+        // 2. TMDb Search
         addTyping();
-        const result = await applyUpdates([{ title, action: 'add' }]);
+        const tmdbData = await fetchTMDbData(title);
         removeTyping();
-        addMsg('assistant', `✅ Added **${title}** to your library.`);
-        lastDiscussedTitle = title;
-        return;
+
+        if (tmdbData?.results?.length) {
+          const results = tmdbData.results.slice(0, 5);
+          pendingSelection = { results };
+          
+          const options = results.map((r, i) => {
+            const name = r.title || r.name;
+            const year = (r.release_date || r.first_air_date || '').split('-')[0];
+            return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
+          }).join('\n');
+
+          addMsg('assistant', `Found some matches for **${title}**:\n\n${options}\n\nPick a number to add it.`);
+          return;
+        }
+        // If no direct TMDb hits, fall through to AI (no return)
       }
 
       // 🗑️ DELETE COMMAND INTERCEPTOR (Bypasses AI)
@@ -3178,37 +3219,55 @@ Output your answer conversationally.`;
         }
       }
 
-      // Intercept assignment: "invasion = watching" OR "progress = s4e4"
-      const assignMatch = userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
-      if (assignMatch && !pendingAIConfirmation && !pendingUpdate) {
-        saveHistoryState();
-        let rawKey = assignMatch[1].trim();
-        let val = assignMatch[2].trim();
-        const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+      // 📝 BROAD INTERCEPTOR: mark, move, update, =
+      const directMatch = userText.match(/^(?:mark|move|update)\s+(.+?)\s+(?:as|to|status|platform|progress)\s+(.+)$/i) || userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
+      
+      if (directMatch && !pendingAIConfirmation && !pendingUpdate && !pendingPlatformConfirmation) {
+        let rawTitle = '';
+        let val = '';
+        let field = '';
 
-        // Check if the first part is actually a field name (implies "Last Context")
-        const isFieldFirst = VALID_FIELDS.includes(rawKey.toLowerCase());
+        if (directMatch[0].match(/^(mark|move|update)/i)) {
+          // Pattern: mark [title] as [val]
+          rawTitle = directMatch[1].trim();
+          val = directMatch[2].trim();
+          // Auto-detect field
+          const vLow = val.toLowerCase();
+          if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(vLow)) field = "status";
+          else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLow)) field = "platform";
+          else if (/^(season|s)\s*\d+/.test(vLow)) field = "progress";
+          else field = "status"; // default
+        } else {
+          // Pattern: [title] = [val]
+          rawTitle = directMatch[1].trim();
+          val = directMatch[2].trim();
+        }
+
+        const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+        const isFieldFirst = VALID_FIELDS.includes(rawTitle.toLowerCase());
 
         let targetItem = null;
-        let field = "notes";
+        if (field === '') field = "notes"; // default for target = value
 
         if (isFieldFirst && lastDiscussedTitle) {
           targetItem = findByTitle(lastDiscussedTitle);
-          field = rawKey.toLowerCase();
+          field = rawTitle.toLowerCase();
         } else {
-          const match = resolveLibraryTitle(rawKey);
+          const match = resolveLibraryTitle(rawTitle);
           if (match.item) {
             targetItem = match.item;
-            // Determine field from value content
             const vLower = val.toLowerCase();
-            if (/^(watching|watched|watchlist|abandoned|dropped|watchlist)$/i.test(vLower)) field = "status";
-            else if (/^(movie|series|miniseries)$/i.test(vLower)) field = "format";
-            else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLower)) field = "platform";
-            else if (/^(season|s)\s*\d+/.test(vLower)) field = "progress";
+            if (field === '') {
+               if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(vLower)) field = "status";
+               else if (/^(movie|series|miniseries)$/i.test(vLower)) field = "format";
+               else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLower)) field = "platform";
+               else if (/^(season|s)\s*\d+/.test(vLower)) field = "progress";
+            }
           }
         }
 
         if (targetItem) {
+          saveHistoryState();
           const oldVal = targetItem[field];
           
           if (field === 'progress') {
@@ -3219,13 +3278,13 @@ Output your answer conversationally.`;
             targetItem[field] = val;
           }
 
-          // 🔥 UNIVERSAL SANITIZATION
           sanitizeItem(targetItem, field === 'status');
-
           saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+
           const oldValStr = (oldVal === undefined || oldVal === null || String(oldVal).trim() === '') ? 'none' : oldVal;
           const newValStr = (targetItem[field] === undefined || targetItem[field] === null || String(targetItem[field]).trim() === '') ? 'none' : targetItem[field];
-          addMsg('assistant', `✅ Updated **${targetItem.title}**: ${field} "${oldValStr}" \u2192 "${newValStr}"`);
+          
+          addMsg('assistant', `✅ Updated **${targetItem.title}**\n${field}: "${oldValStr}" \u2192 "**${newValStr}**"`);
           lastDiscussedTitle = targetItem.title;
           return;
         }
