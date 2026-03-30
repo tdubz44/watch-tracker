@@ -2250,7 +2250,8 @@
         }
       }
 
-      if (bestMatch && bestScore <= 2) {
+      const threshold = needle.length < 3 ? 0 : 2;
+      if (bestMatch && bestScore <= threshold) {
         return bestMatch;
       }
 
@@ -2675,27 +2676,30 @@ Your goal is to help the user manage their media library and discover their next
 
 ### 2. CORE ROLE: THE TRANSLATOR
 - Translate natural language into a JSON update block.
-- **HYGIENE RULE**: Before recommending or adding, check the **ALL TITLES** list at the top of the context. If it's already in the library, mention that you see it's there instead of recommending it as new.
-- **ZERO-FORMATTING RULE**: Focus 100% on the conversation and the intent. Do **NOT** type out metadata tables or long lists of attributes in your text; the local code will show a "Proposed Change" preview automatically.
+- **HYGIENE RULE**: Check the **ALL TITLES** list at the top of the context before recommending or adding.
+- **VOCABULARY RULE**: 
+    - Use "**Move to Watching**" for items already in the Watchlist. 
+    - Use "**Add to Library**" ONLY for discoveries NOT in the library.
+- **ZERO-FORMATTING RULE**: Focus on conversation. Do **NOT** type out metadata tables or long lists; the local UI handles the preview.
 
 ### 3. RECOMMENDATION MODE (The Gatekeeper)
-- **THE HARD FILTER**: Use the **ALL TITLES** list at the top of your context. **NEVER** recommend a title that is already in the library as "Watched" or "Abandoned".
-- **IGNORE THE WATCHING LIST**: The user has a separate tool for checking their currently watching shows. Do **NOT** recommend titles from the "Currently Watching" category.
+- **THE HARD FILTER**: NEVER recommend a title already in the library as "Watched" or "Abandoned".
+- **IGNORE THE WATCHING LIST**: Do NOT recommend titles from the "Currently Watching" category.
 - **PRIORITIZATION (Watchlist-First)**:
     - **Step 1**: Check the **Watchlist** first. Suggest these titles **only if** they fit the user's specific mood or request.
-    - **Step 2**: If nothing in the Watchlist fits the request, search your internal knowledge for a **New Discovery** (a title NOT found in the library at all).
-- **PLATFORM STANDARDS**: Your standard platforms are: **Apple TV, Netflix, Prime, Disney (no +), and Crave**.
-- **EXPERT CRITIQUE**: Explain *why* a show matches (e.g. "Matching your interest in Lane 1 puzzle-boxes...").
+    - **Step 2**: If no Watchlist item fits, search your internal knowledge for a **New Discovery** (NOT in the library).
+- **DISCOVERY CONFIRMATION**: If the user confirms a "New Discovery" (e.g., says "yes", "add it", "ok"), you MUST provide the JSON block to **add** it immediately.
+- **PLATFORM STANDARDS**: Standard platforms are: **Apple TV, Netflix, Prime, Disney (no +), and Crave**.
 
 ### 4. INTERROGATION MODE (Clarification)
-- If a user command is ambiguous (e.g., "Silo = amazing" or "Silo = apple"), and you are not 100% sure if the value is a Note, Tone, or Platform, **ask for clarification** instead of guessing.
-- E.g.: "I see you're updating Silo. Did you mean 'apple' as the platform (Apple TV), or is that a note you're adding?"
+- If a command is ambiguous (e.g., "Silo = amazing" or "Silo = apple") and you aren't 100% sure if the value is a Note, Tone, or Platform, **ask for clarification** instead of guessing.
 
 ### 5. DATA FORMAT
 <<<JSON
 [
   {
     "title": "Exact Title",
+    "action": "add" | "update",
     "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
     "platform": "Disney" | "Apple TV" | "Netflix" | "Prime" | "Crave"
   }
@@ -3057,8 +3061,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
     async function sendMessage(userText) {
       if (!userText || !userText.trim()) return;
 
-      // Phase 1: Local Undo Interceptor (Bypasses AI)
       const reply = userText.trim().toLowerCase();
+
+      // Phase 1: Undo/Revert (Bypasses AI)
       if (['undo', 'revert'].includes(reply)) {
         await performUndo();
         return;
@@ -3066,80 +3071,149 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       addMsg('user', userText);
 
-      // 🧹 SWEEP COMMAND INTERCEPTOR
-      if (reply === 'sweep' || reply === 'clean' || reply === 'fix library') {
+      // A1: New Command Override (State Clear)
+      const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(reply) || userText.includes('=');
+      if (isNewCommand) {
+        pendingSelection = null;
+        pendingUpdate = null;
+        pendingAIConfirmation = null;
+        pendingPlatformConfirmation = null;
+        pendingDuplicate = null;
+        pendingAutofill = null;
+      }
+
+      // Sweep Command
+      if (['sweep', 'clean', 'fix library'].includes(reply)) {
         runLibraryCleanup();
         return;
       }
-      // Catch any JSON block { ... } at the end of a message and treat it as data.
+
+      // Catch JSON block { ... } — treat as data
       const jsonBlockMatch = userText.match(/({[\s\S]+})$/);
       if (jsonBlockMatch) {
         const rawJson = jsonBlockMatch[1].trim();
         const rawTitlePart = userText.replace(rawJson, '').trim();
-        // Clean-up title: remove "add", quotes, equals, or colon
         const titleKey = rawTitlePart.replace(/^add\s+/i, '').replace(/^[=:]+|[=:]+$/g, '').replace(/^["']+|["']+$/g, '').trim() || lastDiscussedTitle;
-
         try {
           const data = JSON.parse(rawJson);
           if (titleKey) {
             addTyping();
-            const result = await applyUpdates([{ title: titleKey, action: 'add', ...data }]);
+            await applyUpdates([{ title: titleKey, action: 'add', ...data }]);
             removeTyping();
-
             saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-            const fields = Object.keys(data).join(', ');
-            addMsg('assistant', `✅ **Applied updates**:\n- ${titleKey}: ${fields}`);
+            addMsg('assistant', `✅ **Applied updates**:\n- ${titleKey}: ${Object.keys(data).join(', ')}`);
             return;
           }
-        } catch (e) { console.warn("JSON parse failed, falling through to AI."); }
+        } catch (e) { }
       }
 
-      // ➕ ADD COMMAND INTERCEPTOR (Restored TMDb Logic)
-      const addMatch = userText.match(/^add\s+([^=:]+)$/i);
-      if (addMatch && !pendingAIConfirmation && !pendingUpdate) {
-        const title = addMatch[1].trim().replace(/^["']+|["']+$/g, '');
+      // 📝 THE UNIFIED COMMAND ENGINE (v18)
+      // Matches both explicit verbs (mark, add, delete) and assignments (Silo = watched)
+      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)(?:\s+(?:as|to|status|platform|progress|format|tone|notes|lifecycle|year|runtime))?\s*[=:]?\s*(.*)$/i;
+      const cmdMatch = userText.match(cmdRegex);
+
+      if (cmdMatch && isNewCommand) {
+        let verb = (cmdMatch[1] || '').toLowerCase();
+        let rawTitle = cmdMatch[2].trim().replace(/^["']+|["']+$/g, '');
+        let val = cmdMatch[3].trim().replace(/^["']+|["']+$/g, '');
+        let field = '';
+
+        // 🛡️ PRONOUN PROTECTION & NOISY TOKENS
+        const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything'];
+        const NOISY = ['show', 'list', 'check']; 
+        const lowerT = rawTitle.toLowerCase();
         
-        // 1. Duplicate Check
-        const existing = resolveLibraryTitle(title);
-        if (existing.item) {
-          addMsg('assistant', `\u26a0\ufe0f **${existing.item.title}** is already in your library (${existing.item.status}).`);
-          lastDiscussedTitle = existing.item.title;
-          return;
-        }
-
-        // 2. TMDb Search
-        addTyping();
-        const tmdbData = await fetchTMDbData(title);
-        removeTyping();
-
-        if (tmdbData?.results?.length) {
-          const results = tmdbData.results.slice(0, 5);
-          pendingSelection = { results };
+        if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT)) {
+          // Fall through to AI
+        } else {
+          // 🔎 TITLE/FIELD SPLITTING (e.g. "Silo progress = S2")
+          const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+          const titleWords = rawTitle.split(/\s+/);
+          const possibleField = titleWords[titleWords.length - 1].toLowerCase();
           
-          const options = results.map((r, i) => {
-            const name = r.title || r.name;
-            const year = (r.release_date || r.first_air_date || '').split('-')[0];
-            return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
-          }).join('\n');
+          if (VALID_FIELDS.includes(possibleField)) {
+            field = possibleField;
+            titleWords.pop();
+            rawTitle = titleWords.join(' ');
+          }
 
-          addMsg('assistant', `Found some matches for **${title}**:\n\n${options}\n\nPick a number to add it.`);
-          return;
-        }
-        // If no direct TMDb hits, fall through to AI (no return)
-      }
+          // 🎯 RESOLVE TITLE
+          const match = resolveLibraryTitle(rawTitle);
+          const targetItem = match.item;
 
-      // 🗑️ DELETE COMMAND INTERCEPTOR (Bypasses AI)
-      const delMatch = userText.match(/^(delete|remove)\s+(.+)$/i);
-      if (delMatch && !pendingAIConfirmation && !pendingUpdate) {
-        const title = delMatch[2].trim().replace(/^["']+|["']+$/g, '');
-        const match = resolveLibraryTitle(title);
-        if (match.item) {
-          saveHistoryState();
-          library = library.filter(i => i !== match.item);
-          if (lastDiscussedTitle === match.item.title) lastDiscussedTitle = null;
-          saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-          addMsg('assistant', `🗑️ Deleted **${match.item.title}** from your library.`);
-          return;
+          // --- CASE 1: ADDING ---
+          if (verb === 'add' || (!verb && !targetItem && val && !userText.includes('='))) {
+            if (targetItem) {
+               addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
+               lastDiscussedTitle = targetItem.title;
+               return;
+            } else {
+               addTyping();
+               const tmdbData = await fetchTMDbData(rawTitle);
+               removeTyping();
+               if (tmdbData?.results?.length) {
+                 const results = tmdbData.results.slice(0, 5);
+                 pendingSelection = { results };
+                 const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
+                 addMsg('assistant', `Found matches for **${rawTitle}**:\n\n${options}\n\nPick a number.`);
+                 return;
+               } 
+               // No TMDb results? Fall through to AI (Hybrid Add)
+            }
+          } 
+          // --- CASE 2: DELETING / CLEARING ---
+          else if (verb === 'delete' || verb === 'remove' || verb === 'clear') {
+            if (targetItem) {
+              if (field || val) {
+                // Clear specific field
+                const targetField = field || val.toLowerCase();
+                const fieldLower = targetField.toLowerCase();
+                const actualField = fieldLower === 'season' ? 'progress' : (fieldLower === 'note' ? 'notes' : fieldLower);
+
+                if (VALID_FIELDS.includes(actualField)) {
+                  saveHistoryState();
+                  const oldVal = targetItem[actualField] || 'none';
+                  targetItem[actualField] = '';
+                  saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+                  const fLabel = actualField.charAt(0).toUpperCase() + actualField.slice(1);
+                  addMsg('assistant', `✅ Cleared **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**none**"`);
+                  return;
+                }
+              } else {
+                // Full deletion
+                saveHistoryState();
+                library = library.filter(i => i !== targetItem);
+                if (lastDiscussedTitle === targetItem.title) lastDiscussedTitle = null;
+                saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+                addMsg('assistant', `🗑️ Deleted **${targetItem.title}** from your library.`);
+                return;
+              }
+            }
+          }
+          // --- CASE 3: UPDATING ---
+          else if (targetItem && (verb || val)) {
+             // Re-detect field if not split
+             if (!field) {
+                const vLow = val.toLowerCase();
+                if (/^(watching|watched|watchlist|abandoned)$/i.test(vLow)) field = "status";
+                else if (/^(movie|series|miniseries)$/i.test(vLow)) field = "format";
+                else if (/^(season|s)\s*\d+/.test(vLow)) field = "progress";
+             }
+             
+             if (field) {
+                saveHistoryState();
+                const oldVal = targetItem[field] || 'none';
+                if (field === 'progress') val = normalizeProgressValue(val);
+                targetItem[field] = val;
+                sanitizeItem(targetItem, field === 'status');
+                saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+                const newVal = targetItem[field] || 'none';
+                const fLabel = field.charAt(0).toUpperCase() + field.slice(1);
+                addMsg('assistant', `✅ Updated **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**${newVal}**"`);
+                lastDiscussedTitle = targetItem.title;
+                return;
+             }
+          }
         }
       }
 
@@ -3918,149 +3992,7 @@ Output your answer conversationally.`;
         return;
       }
 
-      const FIELD_NAMES = ['subgenres', 'subgenre', 'genre', 'platform', 'tone', 'status', 'format', 'lifecycle', 'progress', 'year', 'notes', 'seasons', 'runtime', 'imdb'];
-      const afterAdd = reply.replace(/^add\s+/i, '').trim();
-      const addRegex = /^add\s+(.+?)(?:\s+(?:to|in)\s+(watched|watching|watchlist|abandoned|dropped|watchlist))?$/i;
-      const addMatchStatus = reply.match(addRegex);
-
-      if (addMatchStatus && !FIELD_NAMES.some(f => afterAdd.startsWith(f))) {
-        const rawTitleStr = addMatchStatus[1].trim();
-        const statusHint = addMatchStatus[2] ? addMatchStatus[2].toLowerCase() : null;
-        const addYearMatch = rawTitleStr.match(/\b((?:19|20)\d{2})\b/);
-        const addYearHint = addYearMatch ? addYearMatch[1] : null;
-        const cleanTitle = addYearHint ? rawTitleStr.replace(addYearHint, '').trim() : rawTitleStr;
-        console.log("CLEAN TITLE:", cleanTitle, "YEAR HINT:", addYearHint);
-
-        const existing = findByTitle(cleanTitle);
-        console.log("EXISTING MATCH:", existing);
-
-        if (existing) {
-          pendingDuplicate = {
-            title: cleanTitle,
-            statusHint: statusHint
-          };
-
-          addMsg(
-            'assistant',
-            `⚠️ "${existing.title}" already exists as ${existing.format} (${existing.year || 'unknown year'}).\n\nDo you want to search for a different version? (yes/no)`
-          );
-
-          return;
-        }
-
-        console.log("ABOUT TO FETCH TMDB:", cleanTitle);
-
-        const tmdbData = await fetchTMDbData(cleanTitle);
-
-        console.log("TMDB SEARCH RESULT:", tmdbData);
-
-        if (!tmdbData?.results?.length) {
-          addMsg('assistant', '❌ No results found.');
-          return;
-        }
-
-        let results = tmdbData.results.slice(0, 5);
-
-        // If year hint given, sort matching year to top
-        if (addYearHint) {
-          results.sort((a, b) => {
-            const aYear = (a.release_date || a.first_air_date || '').split('-')[0];
-            const bYear = (b.release_date || b.first_air_date || '').split('-')[0];
-            return (bYear === addYearHint ? 1 : 0) - (aYear === addYearHint ? 1 : 0);
-          });
-        }
-
-        if (results.length === 1) {
-          pendingSelection = { results, statusHint };
-          return sendMessage('1');
-        }
-
-        // If year hint and top result matches — auto-select it
-        if (addYearHint) {
-          const topYear = (results[0].release_date || results[0].first_air_date || '').split('-')[0];
-          if (topYear === addYearHint) {
-            pendingSelection = { results, statusHint };
-            return sendMessage('1');
-          }
-        }
-
-        pendingSelection = { results, statusHint };
-
-        const options = results.map((r, i) => {
-          const name = r.title || r.name;
-          const year = (r.release_date || r.first_air_date || '').split('-')[0];
-          return `${i + 1}. ${name} ${year ? `(${year})` : ''}`;
-        }).join('\n');
-
-        addMsg('assistant', `I found multiple matches:\n\n${options}\n\nPick a number.`);
-        return;
-      }
-
-      // ============================================================
-      // A5: [title] = [value] — local field assignment (no AI needed)
-      // ============================================================
-      const eqMatch = userText.match(/^(.+?)\s*=\s*(.+)$/i);
-      if (eqMatch) {
-        const rawTitle = eqMatch[1].trim();
-        const rawValue = eqMatch[2].trim();
-        const valLower = rawValue.toLowerCase();
-
-        // Map value to a known field + normalized value
-        let field = null, normalizedValue = null;
-
-        // Status
-        if (['watching', 'currently watching'].includes(valLower)) { field = 'status'; normalizedValue = 'Watching'; }
-        else if (['watched', 'done', 'finished', 'complete', 'completed'].includes(valLower)) { field = 'status'; normalizedValue = 'Watched'; }
-        else if (['abandoned', 'dropped', 'quit'].includes(valLower)) { field = 'status'; normalizedValue = 'Abandoned'; }
-        else if (['watchlist', 'to watch', 'queue'].includes(valLower)) { field = 'status'; normalizedValue = 'Watchlist'; }
-        // Platform
-        else if (['netflix'].includes(valLower)) { field = 'platform'; normalizedValue = 'Netflix'; }
-        else if (['prime', 'amazon', 'amazon prime', 'prime video'].includes(valLower)) { field = 'platform'; normalizedValue = 'Prime'; }
-        else if (['crave'].includes(valLower)) { field = 'platform'; normalizedValue = 'Crave'; }
-        else if (['disney', 'disney+', 'disney plus'].includes(valLower)) { field = 'platform'; normalizedValue = 'Disney'; }
-        else if (['apple tv', 'apple tv+', 'apple'].includes(valLower)) { field = 'platform'; normalizedValue = 'Apple TV'; }
-        // Format
-        else if (['series', 'show', 'tv show', 'tv'].includes(valLower)) { field = 'format'; normalizedValue = 'Series'; }
-        else if (['movie', 'film'].includes(valLower)) { field = 'format'; normalizedValue = 'Movie'; }
-        else if (['documentary', 'doc'].includes(valLower)) { field = 'format'; normalizedValue = 'Documentary'; }
-
-        // Progress & generic catch-all for unknown values if the title explicitly included a field word
-        else {
-          // Check if the raw title part ends with " progress", " format", etc. to infer field.
-          // e.g., "Outlander progress = s7" -> rawTitle: "Outlander progress", rawValue: "s7"
-          const words = rawTitle.toLowerCase().split(' ');
-          const lastWord = words.pop();
-          const VALID_FIELDS = ['progress', 'season', 'seasons', 'format', 'status', 'platform', 'year', 'note', 'notes'];
-          if (VALID_FIELDS.includes(lastWord)) {
-            field = lastWord === 'season' || lastWord === 'seasons' ? 'progress' : lastWord;
-            if (field === 'note') field = 'notes';
-            normalizedValue = rawValue;
-            rawTitle = words.join(' '); // Strip the field word from title
-          }
-        }
-
-        if (field) {
-          // Resolve best library match — prefer higher status rank + metadata score when dupes exist
-          const candidates = library.filter(i => (i.title || '').toLowerCase() === rawTitle.toLowerCase());
-          let target = candidates.length > 0
-            ? candidates.sort((a, b) => {
-              const d = getStatusRank(b.status) - getStatusRank(a.status);
-              return d !== 0 ? d : getMetadataScore(b) - getMetadataScore(a);
-            })[0]
-            : resolveLibraryTitle(rawTitle).item;
-
-          if (!target) {
-            addMsg('assistant', `❌ "${rawTitle}" not found in your library.`);
-            return;
-          }
-
-          const oldValue = target[field];
-          target[field] = normalizedValue;
-          saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-          addMsg('assistant', `✅ ${target.title} — ${field}: ${normalizedValue}${oldValue && oldValue !== normalizedValue ? ` (was: ${oldValue})` : ''}`);
-          return;
-        }
-      }
+      // C1. Master Conversational Fallback (AI handles everything else)
 
       // A1: Clear stale pending states when starting a fresh/unrecognized command
       const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup || pendingPlatformConfirmation;
