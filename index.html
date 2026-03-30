@@ -3139,6 +3139,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // PASS 1: Assignment Match (High Priority)
       // Matches "Title = Value" or "Title: Value"
+      const eqMatch = userText.match(/^(.+?)\s*[=:]\s*(.*)$/i);
       if (eqMatch) {
          rawTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
          val = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
