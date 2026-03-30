@@ -2000,7 +2000,7 @@
       if (low.includes('apple')) return 'Apple TV';
       if (low.includes('netflix')) return 'Netflix';
       if (low.includes('prime')) return 'Prime';
-      if (low.includes('disney')) return 'Disney+';
+      if (low.includes('disney')) return 'Disney';
       if (low.includes('crave')) return 'Crave';
       
       // Strip rent/purchase store suffixes before returning others
@@ -2680,22 +2680,24 @@ Your goal is to help the user manage their media library and discover their next
 
 ### 3. RECOMMENDATION MODE (The Gatekeeper)
 - **THE HARD FILTER**: Use the **ALL TITLES** list at the top of your context. **NEVER** recommend a title that is already in the library as "Watched" or "Abandoned".
-- **SMART PRIORITIZATION (Context-First)**:
-    - **Step 1**: Check the **Watching** and **Watchlist** categories first.
-    - **Step 2**: Only suggest titles from these lists if they **fit the user's specific mood/requirement** (e.g., if they ask for "something light," do NOT suggest a dark show even if it has new episodes).
-    - **Step 3**: If a show in these lists fits the mood **and** has new episodes (e.g. S2 E0/10), suggest it as the top priority.
-    - **Step 4**: If NOTHING in your existing lists fits the request, search your internal knowledge for a **New Discover** (a title NOT in the ALL TITLES list).
-- **EXPERT CRITIQUE**: Explain *why* a show matches (e.g. "Since you liked the reality-bending in Season 1...").
-- Suggest 1–3 titles max.
+- **IGNORE THE WATCHING LIST**: The user has a separate tool for checking their currently watching shows. Do **NOT** recommend titles from the "Currently Watching" category.
+- **PRIORITIZATION (Watchlist-First)**:
+    - **Step 1**: Check the **Watchlist** first. Suggest these titles **only if** they fit the user's specific mood or request.
+    - **Step 2**: If nothing in the Watchlist fits the request, search your internal knowledge for a **New Discovery** (a title NOT found in the library at all).
+- **PLATFORM STANDARDS**: Your standard platforms are: **Apple TV, Netflix, Prime, Disney (no +), and Crave**.
+- **EXPERT CRITIQUE**: Explain *why* a show matches (e.g. "Matching your interest in Lane 1 puzzle-boxes...").
 
-### 4. DATA FORMAT
+### 4. INTERROGATION MODE (Clarification)
+- If a user command is ambiguous (e.g., "Silo = amazing" or "Silo = apple"), and you are not 100% sure if the value is a Note, Tone, or Platform, **ask for clarification** instead of guessing.
+- E.g.: "I see you're updating Silo. Did you mean 'apple' as the platform (Apple TV), or is that a note you're adding?"
+
+### 5. DATA FORMAT
 <<<JSON
 [
   {
     "title": "Exact Title",
     "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
-    "progress": "Season 1 (5/10)",
-    "platform": "Prime"
+    "platform": "Disney" | "Apple TV" | "Netflix" | "Prime" | "Crave"
   }
 ]
 JSON>>>`;
@@ -3225,20 +3227,19 @@ Output your answer conversationally.`;
       if (directMatch && !pendingAIConfirmation && !pendingUpdate && !pendingPlatformConfirmation) {
         let rawTitle = '';
         let val = '';
-        let field = '';
+        let field = ''; // Start empty to detect ambiguity
 
         if (directMatch[0].match(/^(mark|move|update)/i)) {
-          // Pattern: mark [title] as [val]
+          // Explicit Pattern: mark [title] as [val]
           rawTitle = directMatch[1].trim();
           val = directMatch[2].trim();
-          // Auto-detect field
           const vLow = val.toLowerCase();
-          if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(vLow)) field = "status";
-          else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLow)) field = "platform";
+          // Auto-detect field
+          if (/^(watching|watched|watchlist|abandoned)$/i.test(vLow)) field = "status";
           else if (/^(season|s)\s*\d+/.test(vLow)) field = "progress";
-          else field = "status"; // default
+          // If unrecognized (like a platform or note), it falls through to AI
         } else {
-          // Pattern: [title] = [val]
+          // Assignment Pattern: [title] = [val]
           rawTitle = directMatch[1].trim();
           val = directMatch[2].trim();
         }
@@ -3247,8 +3248,6 @@ Output your answer conversationally.`;
         const isFieldFirst = VALID_FIELDS.includes(rawTitle.toLowerCase());
 
         let targetItem = null;
-        if (field === '') field = "notes"; // default for target = value
-
         if (isFieldFirst && lastDiscussedTitle) {
           targetItem = findByTitle(lastDiscussedTitle);
           field = rawTitle.toLowerCase();
@@ -3258,15 +3257,19 @@ Output your answer conversationally.`;
             targetItem = match.item;
             const vLower = val.toLowerCase();
             if (field === '') {
-               if (/^(watching|watched|watchlist|abandoned|dropped)$/i.test(vLower)) field = "status";
+               // 🛡️ AMBIGUITY RULE: Only intercept if the value matches a clear non-platform pattern
+               if (/^(watching|watched|watchlist|abandoned)$/i.test(vLower)) field = "status";
                else if (/^(movie|series|miniseries)$/i.test(vLower)) field = "format";
-               else if (/^(netflix|prime|apple|disney|crave)$/i.test(vLower)) field = "platform";
                else if (/^(season|s)\s*\d+/.test(vLower)) field = "progress";
+               else {
+                 // **FALL THROUGH TO AI**: Ambiguous or platform (e.g. "apple", "HBO")
+                 targetItem = null; 
+               }
             }
           }
         }
 
-        if (targetItem) {
+        if (targetItem && field !== '') {
           saveHistoryState();
           const oldVal = targetItem[field];
           
