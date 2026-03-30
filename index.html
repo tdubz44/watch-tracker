@@ -4197,11 +4197,13 @@ Output your answer conversationally.`;
                 const tmdbData = await fetchTMDbData(searchTitle);
                 removeTyping();
                 if (tmdbData?.results?.length) {
-                   const results = tmdbData.results.slice(0, 5);
+                   // Only show results with a date (to avoid "orphan" placeholder entries)
+                   let results = tmdbData.results.filter(r => (r.release_date || r.first_air_date)).slice(0, 5);
+                   if (results.length === 0) results = tmdbData.results.slice(0, 5); // Fallback if no dated items
+                   
                    pendingSelection = { results, statusHint: searchAction.status || 'Watchlist' }; 
                    const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
-                   const conversationalText = aiReply.split('<<<JSON')[0].trim();
-                   addMsg('assistant', `${conversationalText}\n\n**Search Matches for "${searchTitle}":**\n\n${options}\n\nPick a number.`);
+                   addMsg('assistant', `**Search Matches for "${searchTitle}":**\n\n${options}\n\nPick a number.`);
                    return; // 🎯 BYPASS ALL AI METADATA
                 }
             }
