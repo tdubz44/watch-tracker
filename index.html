@@ -1304,11 +1304,11 @@
         currentLib.forEach(currItem => {
            const restItem = restoredLib.find(ri => ri.title === currItem.title);
            if (restItem) {
-             const fields = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+             const fields = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres'];
              fields.forEach(f => {
                if (currItem[f] !== restItem[f]) {
-                 const oldVal = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : currItem[f];
-                 const newVal = (restItem[f] === undefined || restItem[f] === null || String(restItem[f]).trim() === '') ? 'none' : restItem[f];
+                 const oldVal = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : String(currItem[f]);
+                 const newVal = (restItem[f] === undefined || restItem[f] === null || String(restItem[f]).trim() === '') ? 'none' : String(restItem[f]);
                  changes.push(`**${currItem.title}** ${f}: "${oldVal}" \u2192 "**${newVal}**"`);
                }
              });
@@ -3168,7 +3168,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           }
 
           // --- CASE 1: ADDING ---
-          if (verb === 'add' || (!verb && !targetItem && val && !userText.includes('='))) {
+          if (verb === 'add' || (!verb && !targetItem && val)) {
             if (targetItem) {
                addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
                lastDiscussedTitle = targetItem.title;
@@ -3244,18 +3244,18 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              }
              
              if (field) {
-                saveHistoryState();
-                const oldVal = targetItem[field] || 'none';
-
                 // Schema Mapping & Normalization
                 const fLow = field.toLowerCase();
                 let actualField = fLow;
                 if (fLow === 'season' || fLow === 'seasons') actualField = 'progress';
-                if (fLow === 'genre' || fLow === 'genres') actualField = 'primary_genre';
-                if (fLow === 'subgenre') actualField = 'subgenres';
+                if (fLow === 'genre') actualField = 'primary_genre'; 
+                if (fLow === 'genres' || fLow === 'subgenre' || fLow === 'subgenres') actualField = 'subgenres';
                 if (fLow === 'note') actualField = 'notes';
 
-                if (actualField === 'progress') val = normalizeProgressValue(val);
+                saveHistoryState();
+                const oldVal = targetItem[actualField] || 'none';
+
+                if (actualField === 'progress') val = await normalizeProgressValue(val);
                 
                 targetItem[actualField] = val;
                 sanitizeItem(targetItem, actualField === 'status');
@@ -3270,7 +3270,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                   'platform': 'Platform',
                   'format': 'Format',
                   'primary_genre': 'Genre',
-                  'subgenres': 'Subgenres',
+                  'subgenres': 'Sub-genres',
                   'tone': 'Tone',
                   'notes': 'Notes',
                   'lifecycle': 'Lifecycle',
