@@ -2255,12 +2255,14 @@
         return bestMatch;
       }
 
-      // Substring fallback: "Silo" matches "Silo (2023)"
-      const subMatch = library.find(item => {
-        const can = normalizeTitle(item.title);
-        return (can.includes(needle) || needle.includes(can)) && Math.abs(can.length - needle.length) < 10;
-      });
-      if (subMatch) return subMatch;
+      // Substring fallback (PRONOUN SHIELD: Disabled for < 3 chars to prevent "it" -> "Matrix")
+      if (needle.length >= 3) {
+        const subMatch = library.find(item => {
+          const can = normalizeTitle(item.title);
+          return (can.includes(needle) || needle.includes(can)) && Math.abs(can.length - needle.length) < 10;
+        });
+        if (subMatch) return subMatch;
+      }
 
       return null;
     }
@@ -3114,18 +3116,36 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         } catch (e) { }
       }
 
-      // 📝 THE UNIFIED COMMAND ENGINE (v18)
-      // Matches both explicit verbs (mark, add, delete) and assignments (Silo = watched)
-      // Group 1: Verb, Group 2: Title & Field, Group 3: Value
-      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)\s*[=:]?\s*(.*)$/i;
-      const cmdMatch = userText.match(cmdRegex);
+      // 📝 THE UNIFIED COMMAND ENGINE (v18.3 - Two-Pass)
+      let verb = '', rawTitle = '', val = '', field = '';
 
-      if (cmdMatch && isNewCommand) {
-        let verb = (cmdMatch[1] || '').toLowerCase();
-        let rawTitle = cmdMatch[2].trim().replace(/^["']+|["']+$/g, '');
-        let val = cmdMatch[3].trim().replace(/^["']+|["']+$/g, '');
-        let field = '';
+      // PASS 1: Assignment Match (High Priority)
+      // Matches "Title = Value" or "Title: Value"
+      const eqMatch = userText.match(/^(.+?)\s*[=:]\s*(.*)$/i);
+      if (eqMatch && isNewCommand) {
+         rawTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
+         val = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
+         // Re-extract title/field if user typed "Silo progress = S2"
+         const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
+         const words = rawTitle.split(/\s+/);
+         const last = words[words.length-1].toLowerCase();
+         if (VALID_FIELDS.includes(last)) {
+            field = last;
+            words.pop();
+            rawTitle = words.join(' ');
+         }
+      } 
+      // PASS 2: Verb Match (Fallback)
+      // Matches "add Title", "delete Title", etc.
+      else {
+         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update)\s+(.+)$/i);
+         if (verbMatch && isNewCommand) {
+            verb = verbMatch[1].toLowerCase();
+            rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
+         }
+      }
 
+      if ((verb || val) && rawTitle && isNewCommand) {
         // 🛡️ PRONOUN PROTECTION & NOISY TOKENS
         const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything'];
         const NOISY = ['show', 'list', 'check']; 
@@ -3134,20 +3154,18 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT)) {
           // Fall through to AI
         } else {
-          // 🔎 TITLE/FIELD SPLITTING (e.g. "Silo progress = S2")
-          const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
-          const titleWords = rawTitle.split(/\s+/);
-          const possibleField = titleWords[titleWords.length - 1].toLowerCase();
-          
-          if (VALID_FIELDS.includes(possibleField)) {
-            field = possibleField;
-            titleWords.pop();
-            rawTitle = titleWords.join(' ');
-          }
 
-          // 🎯 RESOLVE TITLE
-          const match = resolveLibraryTitle(rawTitle);
-          const targetItem = match.item;
+          // 🎯 RESOLVE TITLE (Substring shield for < 3 chars)
+          let match = resolveLibraryTitle(rawTitle);
+          let targetItem = match.item;
+          
+          if (!targetItem && rawTitle.length >= 3) {
+             const needle = normalizeTitle(rawTitle);
+             targetItem = library.find(i => {
+                const can = normalizeTitle(i.title);
+                return can.startsWith(needle) || needle.startsWith(can);
+             });
+          }
 
           // --- CASE 1: ADDING ---
           if (verb === 'add' || (!verb && !targetItem && val && !userText.includes('='))) {
@@ -3218,9 +3236,11 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              // Re-detect field if not split
              if (!field) {
                 const vLow = val.toLowerCase();
-                if (/^(watching|watched|watchlist|abandoned)$/i.test(vLow)) field = "status";
-                else if (/^(movie|series|miniseries)$/i.test(vLow)) field = "format";
-                else if (/^(season|s)\s*\d+/.test(vLow)) field = "progress";
+                if (/^(watching|watched|watchlist|abandoned|dropped|to watch|queue)$/i.test(vLow)) field = "status";
+                else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) field = "format";
+                else if (/^(season|s|s\d+\s*e\d+)\d*/i.test(vLow) || /^(s\d+)/i.test(vLow)) field = "progress";
+                else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) field = "platform";
+                else if (/(sci-fi|drama|comedy|action|horror|thriller|mystery|fantasy)/i.test(vLow)) field = "primary_genre";
              }
              
              if (field) {
