@@ -2718,7 +2718,7 @@ Your goal is to help the user manage their media library and discover their next
 JSON>>>
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
 - **NEVER** recommend or add the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
-- If you don't find a direct match for a keyword, ask for clarification or use your knowledge for a NEW discovery (e.g. "Black Beauty") instead of defaulting to existing titles starting with "E".
+- If you don't find a direct match for a keyword, use your knowledge for a NEW discovery (e.g. "Black Beauty") and **ALWAYS provide the final JSON block for that show in your first clarification message**. (Example: "Did you mean Black Beauty? <<<JSON addon...>>>").
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
 
     function addMsg(role, text, jsonApplied) {
@@ -3258,10 +3258,10 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              if (!finalField) {
                 const vLow = finalVal.toLowerCase();
                 if (/^(watching|watched|watchlist|abandoned|dropped|to watch|queue)$/i.test(vLow)) finalField = "status";
-                else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) finalField = "format";
-                else if (/^(season|s|s\d+\s*e\d+)\d*/i.test(vLow) || /^(s\d+)/i.test(vLow)) finalField = "progress";
-                else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) finalField = "platform";
                 else if (/(sci-fi|drama|comedy|action|horror|thriller|mystery|fantasy)/i.test(vLow)) finalField = "primary_genre";
+                else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) finalField = "platform";
+                else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) finalField = "format";
+                else if (/^(season|s\d+)/i.test(vLow) || /s\d+\s*e\d+/i.test(vLow)) finalField = "progress";
              }
              
              if (finalField) {
