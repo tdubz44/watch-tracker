@@ -3109,7 +3109,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // 📝 THE UNIFIED COMMAND ENGINE (v18)
       // Matches both explicit verbs (mark, add, delete) and assignments (Silo = watched)
-      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)(?:\s+(?:as|to|status|platform|progress|format|tone|notes|lifecycle|year|runtime))?\s*[=:]?\s*(.*)$/i;
+      const cmdRegex = /^(?:(add|delete|remove|clear|mark|move|update)\s+)?(.+?)(?:\s+(?:as|to|status|platform|progress|format|tone|notes|lifecycle|year|runtime|genre|genres|subgenre|subgenres|season|seasons))?\s*[=:]?\s*(.*)$/i;
       const cmdMatch = userText.match(cmdRegex);
 
       if (cmdMatch && isNewCommand) {
@@ -3127,7 +3127,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           // Fall through to AI
         } else {
           // 🔎 TITLE/FIELD SPLITTING (e.g. "Silo progress = S2")
-          const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
+          const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
           const titleWords = rawTitle.split(/\s+/);
           const possibleField = titleWords[titleWords.length - 1].toLowerCase();
           
@@ -3175,7 +3175,22 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                   const oldVal = targetItem[actualField] || 'none';
                   targetItem[actualField] = '';
                   saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                  const fLabel = actualField.charAt(0).toUpperCase() + actualField.slice(1);
+                  
+                  const FIELD_LABELS = {
+                    'status': 'Status',
+                    'progress': 'Progress',
+                    'platform': 'Platform',
+                    'format': 'Format',
+                    'primary_genre': 'Genre',
+                    'subgenres': 'Subgenres',
+                    'tone': 'Tone',
+                    'notes': 'Notes',
+                    'lifecycle': 'Lifecycle',
+                    'year': 'Year',
+                    'runtime': 'Runtime',
+                    'imdbid': 'IMDb ID'
+                  };
+                  const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
                   addMsg('assistant', `✅ Cleared **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**none**"`);
                   return;
                 }
@@ -3203,13 +3218,45 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              if (field) {
                 saveHistoryState();
                 const oldVal = targetItem[field] || 'none';
-                if (field === 'progress') val = normalizeProgressValue(val);
-                targetItem[field] = val;
-                sanitizeItem(targetItem, field === 'status');
+
+                // Schema Mapping & Normalization
+                const fLow = field.toLowerCase();
+                let actualField = fLow;
+                if (fLow === 'season' || fLow === 'seasons') actualField = 'progress';
+                if (fLow === 'genre' || fLow === 'genres') actualField = 'primary_genre';
+                if (fLow === 'subgenre') actualField = 'subgenres';
+                if (fLow === 'note') actualField = 'notes';
+
+                if (actualField === 'progress') val = normalizeProgressValue(val);
+                
+                targetItem[actualField] = val;
+                sanitizeItem(targetItem, actualField === 'status');
                 saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                const newVal = targetItem[field] || 'none';
-                const fLabel = field.charAt(0).toUpperCase() + field.slice(1);
-                addMsg('assistant', `✅ Updated **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**${newVal}**"`);
+                
+                const newVal = targetItem[actualField] || 'none';
+                
+                // 🎨 PREMIUM FEEDBACK LABELS
+                const FIELD_LABELS = {
+                  'status': 'Status',
+                  'progress': 'Progress',
+                  'platform': 'Platform',
+                  'format': 'Format',
+                  'primary_genre': 'Genre',
+                  'subgenres': 'Subgenres',
+                  'tone': 'Tone',
+                  'notes': 'Notes',
+                  'lifecycle': 'Lifecycle',
+                  'year': 'Year',
+                  'runtime': 'Runtime',
+                  'imdbid': 'IMDb ID'
+                };
+                const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
+                
+                // Title Case the displayed value for genres/tones
+                let valDisplay = newVal;
+                if (['primary_genre', 'subgenres', 'tone'].includes(actualField)) valDisplay = titleCaseList(newVal);
+
+                addMsg('assistant', `✅ Updated **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**${valDisplay}**"`);
                 lastDiscussedTitle = targetItem.title;
                 return;
              }
