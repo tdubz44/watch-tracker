@@ -2718,7 +2718,8 @@ Your goal is to help the user manage their media library and discover their next
 JSON>>>
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
 - **NEVER** recommend or add the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
-- If you don't find a direct match for a keyword, use your knowledge for a NEW discovery (e.g. "Black Beauty") and **ALWAYS provide the final JSON block for that show in your first clarification message**. (Example: "Did you mean Black Beauty? <<<JSON addon...>>>").
+- If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
+- **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
 
     function addMsg(role, text, jsonApplied) {
@@ -4188,7 +4189,24 @@ Output your answer conversationally.`;
             let parsed = JSON.parse(cleaned);
             const updates = Array.isArray(parsed) ? parsed : [parsed];
 
-            addTyping(); // Pre-fetching TMDb data for the preview
+            // 🔍 NEW: HIGH-PRIORITY SEARCH HANDOFF (Bypasses AI Metadata)
+            const searchAction = updates.find(u => u.action === 'search');
+            if (searchAction) {
+                const searchTitle = searchAction.title;
+                addTyping();
+                const tmdbData = await fetchTMDbData(searchTitle);
+                removeTyping();
+                if (tmdbData?.results?.length) {
+                   const results = tmdbData.results.slice(0, 5);
+                   pendingSelection = { results, statusHint: searchAction.status || 'Watchlist' }; 
+                   const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
+                   const conversationalText = aiReply.split('<<<JSON')[0].trim();
+                   addMsg('assistant', `${conversationalText}\n\n**Search Matches for "${searchTitle}":**\n\n${options}\n\nPick a number.`);
+                   return; // 🎯 BYPASS ALL AI METADATA
+                }
+            }
+
+            addTyping(); // Pre-fetching TMDb data for standard add/update
 
             let previewBlock = "";
             for (const update of updates) {
