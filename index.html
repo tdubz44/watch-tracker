@@ -1309,7 +1309,9 @@
                if (currItem[f] !== restItem[f]) {
                  const oldVal = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : String(currItem[f]);
                  const newVal = (restItem[f] === undefined || restItem[f] === null || String(restItem[f]).trim() === '') ? 'none' : String(restItem[f]);
-                 changes.push(`**${currItem.title}** ${f}: "${oldVal}" \u2192 "**${newVal}**"`);
+                 const FIELD_LABELS = { 'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime' };
+                 const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
+                 changes.push(`**${currItem.title}** ${fLabel}: "${oldVal}" \u2192 "**${newVal}**"`);
                }
              });
            }
@@ -2713,7 +2715,11 @@ Your goal is to help the user manage their media library and discover their next
     "platform": "Disney" | "Apple TV" | "Netflix" | "Prime" | "Crave"
   }
 ]
-JSON>>>`;
+JSON>>>
+### 6. THE "ED" BLACKLIST (IRONCLAD)
+- **NEVER** recommend or add the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
+- If you don't find a direct match for a keyword, ask for clarification or use your knowledge for a NEW discovery (e.g. "Black Beauty") instead of defaulting to existing titles starting with "E".
+- If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
 
     function addMsg(role, text, jsonApplied) {
       const chatWindow = document.getElementById('chatWindow');
@@ -3072,6 +3078,18 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       const reply = userText.trim().toLowerCase();
 
+      // --- PHASE 0: CONFIRMATIONS (TOP PRIORITY) ---
+      if (pendingAIConfirmation) {
+        const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
+        const negatives = ['no', 'n', 'cancel', 'nope'];
+
+        if (negatives.includes(reply)) {
+          pendingAIConfirmation = false;
+          addMsg('assistant', '\u274c No changes made.');
+          return;
+        }
+      }
+
       // Phase 1: Undo/Revert (Bypasses AI)
       if (['undo', 'revert'].includes(reply)) {
         await performUndo();
@@ -3121,8 +3139,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // PASS 1: Assignment Match (High Priority)
       // Matches "Title = Value" or "Title: Value"
-      const eqMatch = userText.match(/^(.+?)\s*[=:]\s*(.*)$/i);
-      if (eqMatch && isNewCommand) {
+      if (eqMatch) {
          rawTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
          val = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
          // Re-extract title/field if user typed "Silo progress = S2"
@@ -3139,33 +3156,33 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       // Matches "add Title", "delete Title", etc.
       else {
          const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update)\s+(.+)$/i);
-         if (verbMatch && isNewCommand) {
+         if (verbMatch) {
             verb = verbMatch[1].toLowerCase();
             rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
          }
       }
 
-      if ((verb || val) && rawTitle && isNewCommand) {
-        // 🛡️ PRONOUN PROTECTION & NOISY TOKENS
-        const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything'];
+      if ((verb || val) && rawTitle) {
+        const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything', 'watched', 'watching', 'watchlist', 'abandoned', 'mark'];
         const NOISY = ['show', 'list', 'check']; 
         const lowerT = rawTitle.toLowerCase();
         
-        if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT)) {
-          // Fall through to AI
-        } else {
+        let finalTitle = rawTitle;
+        if ((PRONOUNS.includes(lowerT) || NOISY.includes(lowerT)) && lastDiscussedTitle) {
+          finalTitle = lastDiscussedTitle;
+        }
 
-          // 🎯 RESOLVE TITLE (Substring shield for < 3 chars)
-          let match = resolveLibraryTitle(rawTitle);
-          let targetItem = match.item;
-          
-          if (!targetItem && rawTitle.length >= 3) {
-             const needle = normalizeTitle(rawTitle);
-             targetItem = library.find(i => {
-                const can = normalizeTitle(i.title);
-                return can.startsWith(needle) || needle.startsWith(can);
-             });
-          }
+        // 🎯 RESOLVE TITLE (Substring shield for < 3 chars)
+        let match = resolveLibraryTitle(finalTitle);
+        let targetItem = match.item;
+        
+        if (!targetItem && finalTitle.length >= 3) {
+           const needle = normalizeTitle(finalTitle);
+           targetItem = library.find(i => {
+              const can = normalizeTitle(i.title);
+              return can.startsWith(needle) || needle.startsWith(can);
+           });
+        }
 
           // --- CASE 1: ADDING ---
           if (verb === 'add' || (!verb && !targetItem && val)) {
@@ -3179,7 +3196,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                removeTyping();
                if (tmdbData?.results?.length) {
                  const results = tmdbData.results.slice(0, 5);
-                 pendingSelection = { results };
+                 pendingSelection = { results, statusHint: val || verb };
                  const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
                  addMsg('assistant', `Found matches for **${rawTitle}**:\n\n${options}\n\nPick a number.`);
                  return;
@@ -3233,19 +3250,22 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           }
           // --- CASE 3: UPDATING ---
           else if (targetItem && (verb || val)) {
-             // Re-detect field if not split
-             if (!field) {
-                const vLow = val.toLowerCase();
-                if (/^(watching|watched|watchlist|abandoned|dropped|to watch|queue)$/i.test(vLow)) field = "status";
-                else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) field = "format";
-                else if (/^(season|s|s\d+\s*e\d+)\d*/i.test(vLow) || /^(s\d+)/i.test(vLow)) field = "progress";
-                else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) field = "platform";
-                else if (/(sci-fi|drama|comedy|action|horror|thriller|mystery|fantasy)/i.test(vLow)) field = "primary_genre";
+             let finalField = field;
+             let finalVal = val;
+
+             // Re-detect field if not split by Pass 1 (e.g. "update Silo watched")
+             if (!finalField) {
+                const vLow = finalVal.toLowerCase();
+                if (/^(watching|watched|watchlist|abandoned|dropped|to watch|queue)$/i.test(vLow)) finalField = "status";
+                else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) finalField = "format";
+                else if (/^(season|s|s\d+\s*e\d+)\d*/i.test(vLow) || /^(s\d+)/i.test(vLow)) finalField = "progress";
+                else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) finalField = "platform";
+                else if (/(sci-fi|drama|comedy|action|horror|thriller|mystery|fantasy)/i.test(vLow)) finalField = "primary_genre";
              }
              
-             if (field) {
+             if (finalField) {
                 // Schema Mapping & Normalization
-                const fLow = field.toLowerCase();
+                const fLow = finalField.toLowerCase();
                 let actualField = fLow;
                 if (fLow === 'season' || fLow === 'seasons') actualField = 'progress';
                 if (fLow === 'genre') actualField = 'primary_genre'; 
@@ -3255,9 +3275,12 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 saveHistoryState();
                 const oldVal = targetItem[actualField] || 'none';
 
-                if (actualField === 'progress') val = await normalizeProgressValue(val);
+                if (actualField === 'progress') {
+                  const normalized = await normalizeProgressValue(targetItem, finalVal);
+                  finalVal = normalized || finalVal;
+                }
                 
-                targetItem[actualField] = val;
+                targetItem[actualField] = finalVal;
                 sanitizeItem(targetItem, actualField === 'status');
                 saveLibrary(); updateStats(); refreshSearch(); renderWatching();
                 
@@ -3265,23 +3288,13 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 
                 // 🎨 PREMIUM FEEDBACK LABELS
                 const FIELD_LABELS = {
-                  'status': 'Status',
-                  'progress': 'Progress',
-                  'platform': 'Platform',
-                  'format': 'Format',
-                  'primary_genre': 'Genre',
-                  'subgenres': 'Sub-genres',
-                  'tone': 'Tone',
-                  'notes': 'Notes',
-                  'lifecycle': 'Lifecycle',
-                  'year': 'Year',
-                  'runtime': 'Runtime',
-                  'imdbid': 'IMDb ID'
+                  'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
+                  'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
+                  'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
                 };
                 const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
                 
-                // Title Case the displayed value for genres/tones
-                let valDisplay = newVal;
+                let valDisplay = String(newVal);
                 if (['primary_genre', 'subgenres', 'tone'].includes(actualField)) valDisplay = titleCaseList(newVal);
 
                 addMsg('assistant', `✅ Updated **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**${valDisplay}**"`);
@@ -3289,8 +3302,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 return;
              }
           }
-        }
-      }
+        } 
 
       // A3: Scan userText for any library title that's explicitly mentioned
       const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
