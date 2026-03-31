@@ -1947,6 +1947,30 @@
       }
     });
 
+    function normalizeGenre(g) {
+      if (!g) return { primary: '', sub: '' };
+      // Unified Casing & Sci-Fi Fix
+      const parts = g.split(',').map(s => {
+        const p = s.trim().toLowerCase();
+        if (p === 'science fiction' || p === 'scifi' || p === 'sci-fi' || p === 'sci-fi & fantasy') return 'Sci-Fi';
+        return s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase();
+      }).filter(Boolean);
+      
+      return { 
+        primary: parts[0] || '', 
+        sub: parts.slice(1).join(', ') 
+      };
+    }
+
+    function titleCaseList(str) {
+      if (!str) return '';
+      return str.split(',').map(s => {
+        const p = s.trim().toLowerCase();
+        if (p === 'sci-fi') return 'Sci-Fi';
+        return s.trim().charAt(0).toUpperCase() + s.trim().slice(1).toLowerCase();
+      }).join(', ');
+    }
+
     function fixEncoding(str) {
       if (!str) return str;
       try {
@@ -2130,70 +2154,12 @@
       }
     }
 
-    // Migrates legacy field names on items loaded from old storage versions
     function normalizeLibrary() {
       console.log("🛠️ Starting Universal Beauty Sweep...");
       let count = 0;
       library.forEach(item => {
         try {
-          // 🏆 The "Status Never Missing" Rule
-          if (!item.status) {
-            item.status = item.progress ? 'Watching' : 'Watchlist';
-          } else {
-            const s = String(item.status).toLowerCase().trim();
-            if (s === 'watching') item.status = 'Watching';
-            else if (s === 'watchlist') item.status = 'Watchlist';
-            else if (s === 'watched') item.status = 'Watched';
-            else if (s === 'abandoned') item.status = 'Abandoned';
-          }
-
-          // 🎨 The Universal Beauty Sweep (Case-Agnostic)
-          const rawTone = item.tone || item.Tone;
-          if (rawTone) {
-            item.tone = titleCaseList(rawTone);
-            if (item.Tone) delete item.Tone;
-          }
-
-          if (item.platform) {
-            const p = String(item.platform).toLowerCase();
-            if (p.includes('apple')) item.platform = 'Apple TV';
-            else if (p.includes('netflix')) item.platform = 'Netflix';
-            else if (p.includes('prime')) item.platform = 'Prime';
-            else if (p.includes('disney')) item.platform = 'Disney+';
-            else if (p.includes('crave')) item.platform = 'Crave';
-            else item.platform = item.platform.charAt(0).toUpperCase() + item.platform.slice(1);
-          }
-
-          if (item.lifecycle) {
-            const l = String(item.lifecycle).toLowerCase();
-            if (l === 'ongoing') item.lifecycle = 'Ongoing';
-            else if (l === 'finished') item.lifecycle = 'Finished';
-            else if (l === 'cancelled') item.lifecycle = 'Cancelled';
-            else item.lifecycle = item.lifecycle.charAt(0).toUpperCase() + item.lifecycle.slice(1);
-          }
-
-          if (item.format) {
-            const f = String(item.format).toLowerCase();
-            if (f === 'series') item.format = 'Series';
-            else if (f === 'movie') item.format = 'Movie';
-            else if (f === 'miniseries') item.format = 'Miniseries';
-            else item.format = item.format.charAt(0).toUpperCase() + item.format.slice(1);
-          }
-
-          // 👑 Genre Law
-          const g = item.primary_genre || item.genre || '';
-          if (g) {
-            const { primary, sub } = normalizeGenre(g);
-            item.primary_genre = primary;
-            if (sub && !item.subgenres) item.subgenres = sub;
-          }
-          if (item.genre) delete item.genre;
-
-          // Legacy Migrations
-          if (item.subGenres && !item.subgenres) item.subgenres = item.subGenres;
-          if (!item.subgenres) item.subgenres = '';
-          if (item.subGenres) delete item.subGenres;
-
+          sanitizeItem(item);
           count++;
         } catch (e) { console.warn("Sweep skipped record:", item.title, e); }
       });
@@ -4463,7 +4429,6 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
   </div>`;
     }
 
-    init();
 
     // ---- Local Storage Compatibility Layer (replaces Claude artifact storage) ----
     if (!window.storage) {
@@ -4588,6 +4553,7 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
       } catch (e) { }
     }
 
+    init();
   </script>
 
   <script>
