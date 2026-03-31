@@ -2652,7 +2652,11 @@
       const abandoned = library.filter(x => x.status === 'Abandoned');
       const allTitles = library.map(x => x.title).join('|');
 
-      const fmt = arr => arr.map(x => `${x.title} [${x.format || '?'}|${x.status}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`).join('\n');
+      const fmt = arr => arr.map(x => {
+        try {
+          return `${x.title || 'Unknown'} [${x.format || '?'}|${x.status || '?'}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
+        } catch (e) { return 'Error parsing item'; }
+      }).join('\n');
 
       return `=== LIBRARY CONTEXT ===
 
@@ -2724,7 +2728,8 @@ JSON>>>
 - **EXISTING TITLES**: If "Ed" (or any title) is already in the user's 'ALL TITLES' list, ignore the blacklist and process updates normally in your JSON block.
 - If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
 - **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
-- If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
+- If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."
+- **ZERO RESULTS RULE**: If a bulk command (e.g. "move all movies") results in zero matches because the specific category or status is empty, do NOT say "Cancelled." Instead, explain that there are no items matching that filter in your library.`;
 
     function addMsg(role, text, jsonApplied) {
       const chatWindow = document.getElementById('chatWindow');
@@ -2802,7 +2807,7 @@ JSON>>>
         });
 
         const result = realUpdates.length > 0 ? await applyUpdates(realUpdates) : { added: 0, updated: 0, skipped: 0, skippedTitles: [] };
-        saveLibrary();
+        await saveLibrary();
         updateStats();
         refreshSearch();
         renderWatching();
@@ -3416,8 +3421,11 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         } 
 
       // A3: Scan userText for any library title that's explicitly mentioned
-      const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
-      if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
+      // 🛡️ HIJACK GUARD: Don't hijack if the request is conversational discovery (Test 4b)
+      if (!isConversational) {
+         const mentionedInMsg = library.find(item => userText.toLowerCase().includes(item.title.toLowerCase()));
+         if (mentionedInMsg) lastDiscussedTitle = mentionedInMsg.title;
+      }
 
       // F3. Platform confirmation (Mega-Sweep fallback)
       if (pendingPlatformConfirmation) {
