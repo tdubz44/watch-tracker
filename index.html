@@ -2680,6 +2680,7 @@ Your goal is to help the user manage their media library and discover their next
   }
 ]
 JSON>>>
+- **IRONCLAD DELIMITERS**: You MUST wrap every JSON block in '<<<JSON' and 'JSON>>>'. NEVER output raw JSON without these tags.
 - **EXPLICIT MENTION**: Use action: "mention" for ANY title you recommend or discuss but aren't currently adding or updating.
 
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
@@ -2703,7 +2704,8 @@ JSON>>>
       div.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
       const avatar = role === 'user' ? '🎬' : '🤖';
       const rawDisplay = text
-        .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // strip raw JSON block from display
+        .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // strip tagged JSON
+        .replace(/^\s*\[\s*\{[\s\S]*?\}\s*\]\s*$/g, '') // Emergency strip for raw JSON arrays
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .trim();
@@ -2732,11 +2734,19 @@ JSON>>>
     }
 
     async function parseAndApplyJSON(text) {
-      const match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
-      if (!match) return null;
+      // 🎯 DELIMITER SEARCH: Try tags first, then fallback to raw array
+      let match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
+      let jsonString = match ? match[1] : null;
+      
+      if (!jsonString) {
+        const rawMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+        if (rawMatch) jsonString = rawMatch[0];
+      }
+
+      if (!jsonString) return null;
       saveHistoryState();
       try {
-        const cleaned = match[1]
+        const cleaned = jsonString
           .replace(/\\n/g, '')
           .replace(/\\"/g, '"')
           .trim()
