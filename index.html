@@ -4309,10 +4309,13 @@ Output your answer conversationally.`;
 
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
             
-            // 🛡️ BOLD TITLE HARVESTER: Extract recommended titles from natural language
-            const boldMatch = conversationalText.match(/\*\*([^*]+)\*\*/);
-            if (boldMatch) {
-               lastAssistantTitle = boldMatch[1].trim();
+            // 🛡️ SMART TITLE HARVESTER: Extract recommended titles from bold, quotes, or first pattern
+            const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"/g;
+            const matches = [...conversationalText.matchAll(harvestRegex)];
+            if (matches.length > 0) {
+               // Use the last match if AI recommended multiple but then asked "add it?"
+               const lastMatch = matches[matches.length-1];
+               lastAssistantTitle = (lastMatch[1] || lastMatch[2]).trim();
                console.log("🎯 Harvested Title:", lastAssistantTitle);
             }
 
