@@ -3100,7 +3100,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       addMsg('user', userText);
 
       // A1: New Command Override (State Clear)
-      const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(reply) || userText.includes('=');
+      const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(userText) || userText.includes('=');
+      const isConversational = /me\s+something|like\b|think\b|about\b/i.test(userText); // Test 4b: Hijack Guard
+
       if (isNewCommand) {
         pendingSelection = null;
         pendingUpdate = null;
@@ -3108,6 +3110,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         pendingPlatformConfirmation = null;
         pendingDuplicate = null;
         pendingAutofill = null;
+        pendingDelete = null;
       }
 
       // Sweep Command
@@ -3167,23 +3170,42 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       if ((verb || val) && rawTitle) {
         const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything', 'watched', 'watching', 'watchlist', 'abandoned', 'mark'];
         const NOISY = ['show', 'list', 'check']; 
-        const lowerT = rawTitle.toLowerCase();
-        
         let finalTitle = rawTitle;
-        if ((PRONOUNS.includes(lowerT) || NOISY.includes(lowerT)) && lastDiscussedTitle) {
-          finalTitle = lastDiscussedTitle;
+        const lowerT = rawTitle.toLowerCase();
+        const isSoloField = VALID_FIELDS.includes(lowerT); // v18.48: Implicit Field Targeting
+
+        if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT) || isSoloField) {
+          // 🛡️ ED LOCKDOWN: Strict pronoun/field resolution
+          if (lowerT === 'it' || lowerT === 'them') {
+             finalTitle = lastAssistantTitle || lastDiscussedTitle || "";
+          } else if (lastDiscussedTitle) {
+             finalTitle = lastDiscussedTitle;
+             // If it was a solo field, we need to swap them
+             if (isSoloField) {
+                val = rawTitle;
+             }
+          }
+        }
+
+        // 🛡️ HIJACK GUARD: If conversational, bypass local resolution
+        if (isConversational) {
+           rawTitle = ''; // Force fall-through
+           finalTitle = '';
         }
 
         // 🎯 RESOLVE TITLE (Substring shield for < 3 chars)
-        let match = resolveLibraryTitle(finalTitle);
-        let targetItem = match.item;
-        
-        if (!targetItem && finalTitle.length >= 3) {
-           const needle = normalizeTitle(finalTitle);
-           targetItem = library.find(i => {
-              const can = normalizeTitle(i.title);
-              return can.startsWith(needle) || needle.startsWith(can);
-           });
+        let targetItem = null;
+        if (finalTitle) {
+           let match = resolveLibraryTitle(finalTitle);
+           targetItem = match.item;
+           
+           if (!targetItem && finalTitle.length >= 3) {
+              const needle = normalizeTitle(finalTitle);
+              targetItem = library.find(i => {
+                 const can = normalizeTitle(i.title);
+                 return can.startsWith(needle) || needle.startsWith(can);
+              });
+           }
         }
 
           // --- CASE 1: ADDING ---
@@ -3209,9 +3231,16 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           // --- CASE 2: DELETING / CLEARING ---
           else if (verb === 'delete' || verb === 'remove' || verb === 'clear') {
             if (targetItem) {
-              if (field || val) {
+              // 🛡️ ENHANCED FIELD CATCH: If p1 missed the field, catch it here
+              let targetField = field || val.toLowerCase();
+              if (!targetField && rawTitle.toLowerCase().includes(' ')) {
+                 const words = rawTitle.toLowerCase().split(/\s+/);
+                 const last = words[words.length-1];
+                 if (VALID_FIELDS.includes(last)) { targetField = last; }
+              }
+
+              if (targetField) {
                 // Clear specific field
-                const targetField = field || val.toLowerCase();
                 const fieldLower = targetField.toLowerCase();
                 const actualField = fieldLower === 'season' ? 'progress' : (fieldLower === 'note' ? 'notes' : fieldLower);
 
@@ -3222,30 +3251,19 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                   saveLibrary(); updateStats(); refreshSearch(); renderWatching();
                   
                   const FIELD_LABELS = {
-                    'status': 'Status',
-                    'progress': 'Progress',
-                    'platform': 'Platform',
-                    'format': 'Format',
-                    'primary_genre': 'Genre',
-                    'subgenres': 'Subgenres',
-                    'tone': 'Tone',
-                    'notes': 'Notes',
-                    'lifecycle': 'Lifecycle',
-                    'year': 'Year',
-                    'runtime': 'Runtime',
-                    'imdbid': 'IMDb ID'
+                    'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
+                    'primary_genre': 'Genre', 'subgenres': 'Subgenres', 'tone': 'Tone', 'notes': 'Notes',
+                    'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
                   };
                   const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
                   addMsg('assistant', `✅ Cleared **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**none**"`);
                   return;
                 }
               } else {
-                // Full deletion
-                saveHistoryState();
-                library = library.filter(i => i !== targetItem);
-                if (lastDiscussedTitle === targetItem.title) lastDiscussedTitle = null;
-                saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                addMsg('assistant', `🗑️ Deleted **${targetItem.title}** from your library.`);
+                // 🛡️ DELETION SHIELD: Confirmation required
+                pendingDelete = targetItem;
+                const display = createItemDisplay(targetItem);
+                addMsg('assistant', `\u26a0\ufe0f **Are you sure you want to delete this title?**\n\n${display}\n\n(Reply **yes** to confirm, or any other command to cancel)`);
                 return;
               }
             }
@@ -3258,7 +3276,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              // Re-detect field if not split by Pass 1 (e.g. "update Silo watched")
              if (!finalField) {
                 const vLow = finalVal.toLowerCase();
-                if (/^(watching|watched|watchlist|abandoned|dropped|to watch|queue)$/i.test(vLow)) finalField = "status";
+                if (/^(watchin|watched|watchlist|abandoned|dropped|to watch|queue|complete|completed|finished|done|finish|complet|don)/i.test(vLow)) finalField = "status";
                 else if (/(sci-fi|drama|comedy|action|horror|thriller|mystery|fantasy)/i.test(vLow)) finalField = "primary_genre";
                 else if (/(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow)) finalField = "platform";
                 else if (/^(movie|film|series|show|miniseries|tv|doc|documentary)$/i.test(vLow)) finalField = "format";
@@ -3274,12 +3292,23 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 if (fLow === 'genres' || fLow === 'subgenre' || fLow === 'subgenres') actualField = 'subgenres';
                 if (fLow === 'note') actualField = 'notes';
 
+                // 🛡️ SINGULAR ENFORCER: Ensure primary fields only take ONE value
+                if (actualField === 'primary_genre' || actualField === 'platform') {
+                   finalVal = String(finalVal).split(/[&,]| and | && /i)[0].trim();
+                }
+
                 saveHistoryState();
                 const oldVal = targetItem[actualField] || 'none';
 
                 if (actualField === 'progress') {
                   const normalized = await normalizeProgressValue(targetItem, finalVal);
                   finalVal = normalized || finalVal;
+                }
+                
+                // 🛡️ STATUS NORMALIZER: Map synonyms to official buckets
+                if (actualField === 'status') {
+                   const sLow = finalVal.toLowerCase();
+                   if (/^(complete|completed|finished|done|finish)$/i.test(sLow)) finalVal = 'Watched';
                 }
                 
                 targetItem[actualField] = finalVal;
@@ -4109,10 +4138,11 @@ Output your answer conversationally.`;
 
       // Handle explicit confirmation or cancellation FIRST
       if (pendingAIConfirmation) {
-        const rLower = reply.toLowerCase();
+        const rLower = reply.toLowerCase().trim();
         const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
         const negatives = ['no', 'n', 'cancel', 'nope'];
 
+        // 🛡️ SMART NEGATE: Only trigger absolute cancellation if it's ONLY a negation word
         if (negatives.includes(rLower)) {
           pendingAIConfirmation = false;
           addMsg('assistant', '\u274c No changes made.');
@@ -4197,10 +4227,21 @@ Output your answer conversationally.`;
                 const tmdbData = await fetchTMDbData(searchTitle);
                 removeTyping();
                 if (tmdbData?.results?.length) {
-                   // Only show results with a date (to avoid "orphan" placeholder entries)
-                   let results = tmdbData.results.filter(r => (r.release_date || r.first_air_date)).slice(0, 5);
-                   if (results.length === 0) results = tmdbData.results.slice(0, 5); // Fallback if no dated items
-                   
+                   const sLow = searchTitle.toLowerCase();
+                   // High-Quality Filter: Keep only dated results
+                   let rawMatches = tmdbData.results.filter(r => (r.release_date || r.first_air_date));
+                   if (rawMatches.length === 0) rawMatches = tmdbData.results; // Fallback
+
+                   // 🚀 "EXACT MATCH" BOOST: Pull perfect title matches to the top
+                   rawMatches.sort((a, b) => {
+                       const aT = (a.title || a.name || '').toLowerCase();
+                       const bT = (b.title || b.name || '').toLowerCase();
+                       const aMatch = (aT === sLow) ? 1 : 0;
+                       const bMatch = (bT === sLow) ? 1 : 0;
+                       return bMatch - aMatch; // Exact matches come first
+                   });
+
+                   const results = rawMatches.slice(0, 5);
                    pendingSelection = { results, statusHint: searchAction.status || 'Watchlist' }; 
                    const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
                    addMsg('assistant', `**Search Matches for "${searchTitle}":**\n\n${options}\n\nPick a number.`);
