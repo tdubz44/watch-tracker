@@ -3114,7 +3114,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       }
 
       // Sweep Command
-      if (['sweep', 'clean', 'fix library'].includes(reply)) {
+      if (['sweep', 'clean', 'fix library'].includes(userText)) {
         runLibraryCleanup();
         return;
       }
@@ -3139,6 +3139,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       }
 
       // 📝 THE UNIFIED COMMAND ENGINE (v18.3 - Two-Pass)
+      const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
       let verb = '', rawTitle = '', val = '', field = '';
 
       // PASS 1: Assignment Match (High Priority)
@@ -3148,7 +3149,6 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
          rawTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
          val = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
          // Re-extract title/field if user typed "Silo progress = S2"
-         const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
          const words = rawTitle.split(/\s+/);
          const last = words[words.length-1].toLowerCase();
          if (VALID_FIELDS.includes(last)) {
