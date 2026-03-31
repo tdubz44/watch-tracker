@@ -2580,40 +2580,60 @@
     // ============================================================
     // ASSISTANT TAB
     // ============================================================
-    function buildLibraryContext(contextNote = '') {
-      const watching = library.filter(x => (x.status || '').toLowerCase() === 'watching');
-      const watchlist = library.filter(x => (x.status || '').toLowerCase() === 'watchlist').slice().reverse();
-      const watched = library.filter(x => (x.status || '').toLowerCase() === 'watched').slice(-40);
-      const abandoned = library.filter(x => (x.status || '').toLowerCase() === 'abandoned');
-      const allTitles = library.map(x => (x.title || 'Untitled')).join('|');
+    function buildLibraryContext(contextNote = '', mode = 'LEAN') {
+      const allWatched = library.filter(x => (x.status || '').toLowerCase() === 'watched');
+      const allWatchlist = library.filter(x => (x.status || '').toLowerCase() === 'watchlist');
+      const allWatching = library.filter(x => (x.status || '').toLowerCase() === 'watching');
+      const allAbandoned = library.filter(x => (x.status || '').toLowerCase() === 'abandoned');
 
-      const fmt = arr => arr.map(x => {
-        try {
-          const f = (x.format || '?').charAt(0).toUpperCase() + (x.format || '?').slice(1).toLowerCase();
-          const s = (x.status || '?').charAt(0).toUpperCase() + (x.status || '?').slice(1).toLowerCase();
-          return `${x.title || 'Unknown'} [${f}|${s}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
-        } catch (e) { return 'Error parsing item'; }
-      }).join('\n');
+      const moviesCount = library.filter(x => (x.format || '').toLowerCase() === 'movie').length;
+      const seriesCount = library.filter(x => (x.format || '').toLowerCase() === 'series').length;
 
-      return `=== LIBRARY CONTEXT ===
-TOTAL ITEMS IN LIBRARY: ${library.length} (If this is 0, the library is not loaded!)
-${contextNote}
-CURRENTLY WATCHING (${watching.length}):
-${watching.length ? fmt(watching) : 'None'}
+      const fmtShort = x => `[${(x.format || '?').charAt(0).toUpperCase()}|${(x.status || '?').charAt(0).toUpperCase()}]`;
+      const fmtFull = x => {
+        const f = (x.format || '?').charAt(0).toUpperCase() + (x.format || '?').slice(1).toLowerCase();
+        const s = (x.status || '?').charAt(0).toUpperCase() + (x.status || '?').slice(1).toLowerCase();
+        return `[${f}|${s}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
+      };
 
-WATCHLIST (100% COVERAGE — MOVE THESE):
-${watchlist.length ? fmt(watchlist) : 'None'}
+      const buildSection = (arr, title, isRich) => {
+        if (!arr.length) return `None`;
+        if (isRich) return arr.map(x => `${x.title} ${fmtFull(x)}`).join('\n');
+        return arr.map(x => `${x.title} ${fmtShort(x)}`).join('\n');
+      };
 
-LAST 40 WATCHED:
-${watched.length ? fmt(watched) : 'None'}
+      let context = `=== LIBRARY CONTEXT ===
+LIBRARY TOTALS: ${library.length} items (${moviesCount} Movies, ${seriesCount} Series)
+MODE: ${mode}
+${contextNote}\n\n`;
 
-ABANDONED:
-${abandoned.length ? fmt(abandoned) : 'None'}
+      // 1. WATCHING (Always 100% Full Metadata)
+      context += `STATUS: "WATCHING" (Direct Context):\n${buildSection(allWatching, '', true)}\n\n`;
 
-ALL TITLES (Index for Title Validation):
-${allTitles || 'Empty library'}
+      if (mode === 'INVENTORY') {
+        // Full visibility for bulk moves
+        context += `STATUS: "WATCHLIST" (Full Inventory):\n${buildSection(allWatchlist, '', false)}\n\n`;
+        context += `STATUS: "WATCHED" (Full Inventory):\n${buildSection(allWatched, '', false)}\n\n`;
+        context += `STATUS: "ABANDONED" (Full Inventory):\n${buildSection(allAbandoned, '', false)}\n\n`;
+        const allTitles = library.map(x => x.title).join('|');
+        context += `ALL TITLES INDEX (Final Duplicate Check): ${allTitles}`;
+      } else if (mode === 'INDEX') {
+        // Compressed title lists for recommendations
+        context += `WATCHLIST INDEX: ${allWatchlist.map(x => x.title).join('|')}\n\n`;
+        context += `WATCHED INDEX: ${allWatched.map(x => x.title).join('|')}\n\n`;
+        context += `ABANDONED INDEX: ${allAbandoned.map(x => x.title).join('|')}\n\n`;
+        // Top 10 for recently added richness
+        context += `RECENT WATCHLIST:\n${buildSection(allWatchlist.slice(-10), '', true)}\n\n`;
+        const allTitles = library.map(x => x.title).join('|');
+        context += `ALL TITLES INDEX (Final Duplicate Check): ${allTitles}`;
+      } else {
+        // Ultra-Lean default chat
+        context += `RECENT WATCHLIST:\n${buildSection(allWatchlist.slice(-10), '', true)}\n\n`;
+        context += `RECENT WATCHED:\n${buildSection(allWatched.slice(-10), '', true)}\n\n`;
+        context += `(Inventory/Index Mode: OFF. To search your entire 1,700+ collection, please use a broad command like 'recommend' or 'move all'.)`;
+      }
 
-Format Guide: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
+      return context;
     }
 
     const SYSTEM_PROMPT = `You are the WatchTracker Assistant.
@@ -2669,11 +2689,13 @@ JSON>>>
 - **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."
 - **ZERO RESULTS RULE**: If a bulk command (e.g. "move all movies") results in zero matches because the specific category or status is empty, do NOT say "Cancelled." Instead, explain that there are no items matching that filter in your library.
-### 7. BULK COMMAND GRAMMAR (Reliability)
+### 7. BULK COMMAND GRAMMAR & DATA DECONSTRUCTION
 - **Status Mapping**: "Watchlist", "Watching", "Watched", and "Abandoned" are **STATUSES**. They are never formats or genres.
 - **Format Mapping**: "movies" = format: "Movie", "shows" or "series" = format: "Series", "miniseries" = format: "Miniseries".
-- **Shorthand Pattern**: "move all [Status] to [Status]" or "move all [Format] [Status]" (e.g. "move all watched movies") must always be mapped to the correct multi-field filter. Note: "Watched Movies" is status: "Watched" AND format: "Movie".
-- **Watchlist vs. Library**: "The Watchlist" can refer to the whole library, but in a "move" command, it refers to the **Watchlist Status**.`;
+- **The Deconstruction Mandate**: Plural requests (e.g. 'watched movies') MUST be deconstructed into a status and format filter. 
+    - **Example**: 'move all watched movies' means process anything in the 'STATUS: "WATCHED"' category that has [Movie|...] format.
+- **Zero Result Verification**: If you do not see a direct match for a phrase like "watched movies" in your context, DO NOT say "There are no Watched Movies status titles". Search the individual fields for a match before giving up.
+- **Inventory Visibility**: If your context mode is 'INVENTORY', you have 100% visibility. You must act on every matching record in the library.`;
 
     function addMsg(role, text, jsonApplied) {
       const chatWindow = document.getElementById('chatWindow');
@@ -4235,7 +4257,17 @@ Output your answer conversationally.`;
         const contextNote = lastDiscussedTitle
           ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
           : '';
-        const libraryContext = buildLibraryContext(contextNote);
+        // 🎯 Intent Detection (Token-First Pivot)
+      let mode = 'LEAN';
+      const text = userText.toLowerCase().trim();
+      const needsBulk = /\b(all|every|everything|bulk|entire|collection)\b/i.test(text);
+      const needsRecs = /\b(recommend|suggest|similar|like|discovery|discovery)\b/i.test(text);
+      
+      if (needsBulk) mode = 'INVENTORY';
+      else if (needsRecs) mode = 'INDEX';
+      
+      const libraryContext = buildLibraryContext(contextNote, mode);
+      console.log(`🧠 AI Context Activation Mode: ${mode}`);
         const userMsgWithContext = `${libraryContext}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
 
         const messages = [
