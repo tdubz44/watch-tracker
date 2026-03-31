@@ -2645,24 +2645,24 @@
     // ============================================================
     // ASSISTANT TAB
     // ============================================================
-    function buildLibraryContext() {
-      const watching = library.filter(x => x.status === 'Watching');
-      const watchlist = library.filter(x => x.status === 'Watchlist').slice().reverse();
-      const watched = library.filter(x => x.status === 'Watched').slice(-40);
-      const abandoned = library.filter(x => x.status === 'Abandoned');
-      const allTitles = library.map(x => x.title).join('|');
+    function buildLibraryContext(contextNote = '') {
+      const watching = library.filter(x => (x.status || '').toLowerCase() === 'watching');
+      const watchlist = library.filter(x => (x.status || '').toLowerCase() === 'watchlist').slice().reverse();
+      const watched = library.filter(x => (x.status || '').toLowerCase() === 'watched').slice(-40);
+      const abandoned = library.filter(x => (x.status || '').toLowerCase() === 'abandoned');
+      const allTitles = library.map(x => (x.title || 'Untitled')).join('|');
 
       const fmt = arr => arr.map(x => {
         try {
-          return `${x.title || 'Unknown'} [${x.format || '?'}|${x.status || '?'}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
+          const f = (x.format || '?').charAt(0).toUpperCase() + (x.format || '?').slice(1).toLowerCase();
+          const s = (x.status || '?').charAt(0).toUpperCase() + (x.status || '?').slice(1).toLowerCase();
+          return `${x.title || 'Unknown'} [${f}|${s}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
         } catch (e) { return 'Error parsing item'; }
       }).join('\n');
 
       return `=== LIBRARY CONTEXT ===
-
-ALL TITLES (100% COVERAGE — VALID FOR UPDATES):
-${allTitles || 'Empty library'}
-
+TOTAL ITEMS IN LIBRARY: ${library.length} (If this is 0, the library is not loaded!)
+${contextNote}
 CURRENTLY WATCHING (${watching.length}):
 ${watching.length ? fmt(watching) : 'None'}
 
@@ -2675,7 +2675,10 @@ ${watched.length ? fmt(watched) : 'None'}
 ABANDONED:
 ${abandoned.length ? fmt(abandoned) : 'None'}
 
-Format: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
+ALL TITLES (Index for Title Validation):
+${allTitles || 'Empty library'}
+
+Format Guide: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
     }
 
     const SYSTEM_PROMPT = `You are the WatchTracker Assistant.
@@ -2732,7 +2735,8 @@ JSON>>>
 - **ZERO RESULTS RULE**: If a bulk command (e.g. "move all movies") results in zero matches because the specific category or status is empty, do NOT say "Cancelled." Instead, explain that there are no items matching that filter in your library.
 ### 7. BULK COMMAND GRAMMAR (Reliability)
 - **Status Mapping**: "Watchlist", "Watching", "Watched", and "Abandoned" are **STATUSES**. They are never formats or genres.
-- **Shorthand Pattern**: "move all [Status A] to [Status B]" must always be mapped to a bulk STATUS update. 
+- **Format Mapping**: "movies" = format: "Movie", "shows" or "series" = format: "Series", "miniseries" = format: "Miniseries".
+- **Shorthand Pattern**: "move all [Status] to [Status]" or "move all [Format] to [Status]" must always be mapped to a bulk STATUS update. 
 - **Watchlist vs. Library**: "The Watchlist" can refer to the whole library, but in a "move" command, it refers to the **Watchlist Status**.`;
 
     function addMsg(role, text, jsonApplied) {
@@ -4059,7 +4063,7 @@ Output your answer conversationally.`;
       // ============================================================
       // CHECK / SHOW / LOOKUP HANDLER — reads from library, no AI needed
       // ============================================================
-      if (reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith('lookup ')) {
+      if ((reply.startsWith('check ') || reply.startsWith('show ') || reply.startsWith('lookup ')) && !isConversational) {
         const checkTitle = userText.replace(/^(check|show|lookup)\s+/i, '').trim();
         let match = resolveLibraryTitle(checkTitle);
 
@@ -4088,7 +4092,7 @@ Output your answer conversationally.`;
       // ============================================================
       // LOCAL SEARCH HANDLER (Pretty UI)
       // ============================================================
-      if (reply.startsWith('search ')) {
+      if (reply.startsWith('search ') && !isConversational) {
         const searchQuery = userText.replace(/^search\s+/i, '').trim();
         const searchMatch = resolveLibraryTitle(searchQuery);
 
@@ -4276,11 +4280,11 @@ Output your answer conversationally.`;
 
         addTyping();
 
-        const libraryContext = buildLibraryContext();
         const contextNote = lastDiscussedTitle
           ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
           : '';
-        const userMsgWithContext = `${libraryContext}${contextNote}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
+        const libraryContext = buildLibraryContext(contextNote);
+        const userMsgWithContext = `${libraryContext}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
 
         const messages = [
           { role: "system", content: SYSTEM_PROMPT },
