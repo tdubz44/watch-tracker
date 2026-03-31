@@ -3297,18 +3297,40 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                    finalVal = String(finalVal).split(/[&,]| and | && /i)[0].trim();
                 }
 
-                saveHistoryState();
-                const oldVal = targetItem[actualField] || 'none';
-
                 if (actualField === 'progress') {
-                  const normalized = await normalizeProgressValue(targetItem, finalVal);
-                  finalVal = normalized || finalVal;
+                  const pLow = String(finalVal).toLowerCase().trim();
+                  // 🛡️ COMPLETION HIJACK: Pivot to Status (Watched) OR Caught Up (Watching)
+                  if (/^(complete|completed|finished|done|finish|complet|don)$/i.test(pLow)) {
+                     const isEnded = targetItem.format === 'Movie' || (targetItem.lifecycle && /Ended|Finished|Canceled|Cancelled/i.test(targetItem.lifecycle));
+                     if (isEnded) {
+                        actualField = 'status';
+                        finalVal = 'Watched';
+                        targetItem.progress = ''; // Clear progress string for ended shows
+                     } else {
+                        // Ongoing series: Set to max season/episode
+                        const maxS = targetItem.seasons || 1;
+                        finalVal = await normalizeProgressValue(targetItem, `S${maxS}`);
+                     }
+                  } else {
+                     const normalized = await normalizeProgressValue(targetItem, finalVal);
+                     finalVal = normalized || finalVal;
+                  }
                 }
                 
-                // 🛡️ STATUS NORMALIZER: Map synonyms to official buckets
+                // 🛡️ STATUS NORMALIZER: Map synonyms to official buckets (with Caught-Up Pivot)
                 if (actualField === 'status') {
-                   const sLow = finalVal.toLowerCase();
-                   if (/^(complete|completed|finished|done|finish)$/i.test(sLow)) finalVal = 'Watched';
+                   const sLow = finalVal.toLowerCase().trim();
+                   if (/^(complete|completed|finished|done|finish|complet|don)$/i.test(sLow)) {
+                      const isEnded = targetItem.format === 'Movie' || (targetItem.lifecycle && /Ended|Finished|Canceled|Cancelled/i.test(targetItem.lifecycle));
+                      if (isEnded) {
+                         finalVal = 'Watched';
+                         targetItem.progress = ''; // Clear progress string for ended shows
+                      } else {
+                         // Ongoing series pivot: Instead of status=Watched, set progress to Caught Up
+                         actualField = 'progress';
+                         finalVal = await normalizeProgressValue(targetItem, `S${targetItem.seasons || 1}`);
+                      }
+                   }
                 }
                 
                 targetItem[actualField] = finalVal;
