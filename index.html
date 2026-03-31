@@ -2721,7 +2721,7 @@ JSON>>>
 
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
 - **NEVER** recommend the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
-- **EXISTING TITLES**: If "Ed" (or any title) is already in the user's `ALL TITLES` list, ignore the blacklist and process updates normally in your JSON block.
+- **EXISTING TITLES**: If "Ed" (or any title) is already in the user's 'ALL TITLES' list, ignore the blacklist and process updates normally in your JSON block.
 - If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
 - **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
