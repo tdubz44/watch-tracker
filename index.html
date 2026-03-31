@@ -3231,13 +3231,14 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                return;
             } else {
                addTyping();
-               const tmdbData = await fetchTMDbData(rawTitle);
+               const searchTitle = finalTitle || rawTitle;
+               const tmdbData = await fetchTMDbData(searchTitle);
                removeTyping();
                if (tmdbData?.results?.length) {
                  const results = tmdbData.results.slice(0, 5);
                  pendingSelection = { results, statusHint: val || verb };
                  const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
-                 addMsg('assistant', `Found matches for **${rawTitle}**:\n\n${options}\n\nPick a number.`);
+                 addMsg('assistant', `Found matches for **${searchTitle}**:\n\n${options}\n\nPick a number.`);
                  return;
                } 
                // No TMDb results? Fall through to AI (Hybrid Add)
