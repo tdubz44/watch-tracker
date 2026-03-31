@@ -2729,7 +2729,11 @@ JSON>>>
 - If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
 - **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."
-- **ZERO RESULTS RULE**: If a bulk command (e.g. "move all movies") results in zero matches because the specific category or status is empty, do NOT say "Cancelled." Instead, explain that there are no items matching that filter in your library.`;
+- **ZERO RESULTS RULE**: If a bulk command (e.g. "move all movies") results in zero matches because the specific category or status is empty, do NOT say "Cancelled." Instead, explain that there are no items matching that filter in your library.
+### 7. BULK COMMAND GRAMMAR (Reliability)
+- **Status Mapping**: "Watchlist", "Watching", "Watched", and "Abandoned" are **STATUSES**. They are never formats or genres.
+- **Shorthand Pattern**: "move all [Status A] to [Status B]" must always be mapped to a bulk STATUS update. 
+- **Watchlist vs. Library**: "The Watchlist" can refer to the whole library, but in a "move" command, it refers to the **Watchlist Status**.`;
 
     function addMsg(role, text, jsonApplied) {
       const chatWindow = document.getElementById('chatWindow');
@@ -3126,7 +3130,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // A1: New Command Override (State Clear)
       const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(userText) || userText.includes('=');
-      const isConversational = /me\s+something|like\b|think\b|about\b/i.test(userText); // Test 4b: Hijack Guard
+      const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b/i.test(userText); // Test 4b: Hijack Guard
 
       if (isNewCommand) {
         // 🛡️ AMNESIA SHIELD: Don't clear states if the command is a pronoun follow-up
