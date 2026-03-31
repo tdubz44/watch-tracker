@@ -2647,40 +2647,29 @@
     // ============================================================
     function buildLibraryContext() {
       const watching = library.filter(x => x.status === 'Watching');
-      const watchlist = library.filter(x => x.status === 'Watchlist').slice().reverse().slice(0, 100);
-      const appletv = library.filter(x => x.platform === 'Apple TV' && x.status === 'Watchlist');
+      const watchlist = library.filter(x => x.status === 'Watchlist').slice().reverse();
       const watched = library.filter(x => x.status === 'Watched').slice(-40);
       const abandoned = library.filter(x => x.status === 'Abandoned');
       const allTitles = library.map(x => x.title).join('|');
 
       const fmt = arr => arr.map(x => `${x.title} [${x.format || '?'}|${x.status}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`).join('\n');
 
-      const incomplete = library
-        .filter(x => !x.format || !x.primary_genre || !x.year || !x.imdbid || (!x.lifecycle && x.format !== 'Movie'))
-        .slice().reverse().slice(0, 50);
-
       return `=== LIBRARY CONTEXT ===
 
-ALL TITLES (100% COVERAGE — NEVER recommend these):
+ALL TITLES (100% COVERAGE — VALID FOR UPDATES):
 ${allTitles || 'Empty library'}
 
 CURRENTLY WATCHING (${watching.length}):
 ${watching.length ? fmt(watching) : 'None'}
 
-WATCHLIST (most recent 100):
+WATCHLIST (100% COVERAGE — MOVE THESE):
 ${watchlist.length ? fmt(watchlist) : 'None'}
-
-APPLE TV WATCHLIST (${appletv.length}):
-${appletv.length ? fmt(appletv) : 'None'}
 
 LAST 40 WATCHED:
 ${watched.length ? fmt(watched) : 'None'}
 
 ABANDONED:
 ${abandoned.length ? fmt(abandoned) : 'None'}
-
-RECENTLY ADDED / INCOMPLETE:
-${incomplete.length ? fmt(incomplete) : 'None'}
 
 Format: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
     }
@@ -2722,16 +2711,17 @@ Your goal is to help the user manage their media library and discover their next
 [
   {
     "title": "Exact Title",
-    "action": "add" | "update" | "mention" | "search",
-    "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
-    "platform": "Disney" | "Apple TV" | "Netflix" | "Prime" | "Crave"
+    "action": "add / update / mention / search",
+    "status": "Watchlist / Watching / Watched / Abandoned",
+    "platform": "Disney / Apple TV / Netflix / Prime / Crave"
   }
 ]
 JSON>>>
 - **EXPLICIT MENTION**: Use action: "mention" for ANY title you recommend or discuss but aren't currently adding or updating.
 
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
-- **NEVER** recommend or add the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
+- **NEVER** recommend the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
+- **EXISTING TITLES**: If "Ed" (or any title) is already in the user's `ALL TITLES` list, ignore the blacklist and process updates normally in your JSON block.
 - If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
 - **CRITICAL**: For typo corrections, provide a JSON block with action: "search" and the title: "Corrected Title". This will trigger the local high-quality search picker.
 - If a user says "n" or "no" to a prompt, output exactly: "Cancelled. No changes made."`;
@@ -3107,8 +3097,14 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       if (pendingAIConfirmation) {
         const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
         const negatives = ['no', 'n', 'cancel', 'nope'];
+        const cmdPattern = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i;
 
-        if (negatives.includes(reply)) {
+        // 🛡️ SMART PIVOT: If 'No' is followed by a command (e.g. "no, mark it watched"), break out of confirmation and proceed to engine.
+        if (negatives.includes(reply.split(/[,\s]+/)[0]) && cmdPattern.test(userText.replace(/^(no|n|cancel|nope)[,\s]+/i, '').trim())) {
+             console.log("🔄 Pivoting from confirmation to new command.");
+             pendingAIConfirmation = false;
+             // Allow fall-through to main engine
+        } else if (negatives.includes(reply)) {
           pendingAIConfirmation = false;
           addMsg('assistant', '\u274c No changes made.');
           return;
@@ -3174,24 +3170,41 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       // Matches "Title = Value" or "Title: Value"
       const eqMatch = userText.match(/^(.+?)\s*[=:]\s*(.*)$/i);
       if (eqMatch) {
-         rawTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
-         val = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
-         // Re-extract title/field if user typed "Silo progress = S2"
-         const words = rawTitle.split(/\s+/);
-         const last = words[words.length-1].toLowerCase();
-         if (VALID_FIELDS.includes(last)) {
-            field = last;
-            words.pop();
-            rawTitle = words.join(' ');
+         let potentialTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
+         let potentialVal = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
+         
+         // 🛡️ ASSIGNMENT GUARD: Only intercept if the value matches a valid field, status, or platform.
+         // Prevents "Silo = amazing" from being hijacked locally.
+         const vLow = potentialVal.toLowerCase();
+         const isField = VALID_FIELDS.includes(vLow);
+         const isStatus = /^(watching|watched|watchlist|abandoned|dropped|to watch|queue|complete|completed|finished|done|finish|complet|don)/i.test(vLow);
+         const isPlatform = /(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow);
+         
+         if (isField || isStatus || isPlatform) {
+            rawTitle = potentialTitle;
+            val = potentialVal;
+            // Re-extract title/field if user typed "Silo progress = S2"
+            const words = rawTitle.split(/\s+/);
+            const last = words[words.length-1].toLowerCase();
+            if (VALID_FIELDS.includes(last)) {
+               field = last;
+               words.pop();
+               rawTitle = words.join(' ');
+            }
          }
       } 
       // PASS 2: Verb Match (Fallback)
       // Matches "add Title", "delete Title", etc.
       else {
-         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update)\s+(.+)$/i);
+         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check)\s+(.+)$/i);
          if (verbMatch) {
-            verb = verbMatch[1].toLowerCase();
-            rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
+            // 🛡️ CONVERSATIONAL GUARD: If it's a "Show me..." recommendation request, bypass local metadata.
+            if (isConversational && (verbMatch[1].toLowerCase() === 'show' || verbMatch[1].toLowerCase() === 'check')) {
+               console.log("🗣️ Conversational 'Show' detected - bypassing local intercept.");
+            } else {
+               verb = verbMatch[1].toLowerCase();
+               rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
+            }
          }
       }
 
