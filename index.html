@@ -3182,7 +3182,17 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT) || isSoloField) {
           // 🛡️ ED LOCKDOWN: Strict pronoun/field resolution
           if (lowerT === 'it' || lowerT === 'them') {
-             finalTitle = lastAssistantTitle || lastDiscussedTitle || "";
+             // 1. Prioritize what the Assistant JUST suggested
+             finalTitle = lastAssistantTitle || "";
+             
+             // 2. Fallback to discussed title ONLY if it's NOT "Ed" (the search blackhole)
+             if (!finalTitle && lastDiscussedTitle && lastDiscussedTitle.toLowerCase() !== 'ed') {
+                finalTitle = lastDiscussedTitle;
+             }
+
+             // 3. If we still resolve to "Ed", wipe it. Pronouns should never match Ed 2000.
+             if (finalTitle && finalTitle.toLowerCase() === 'ed') finalTitle = "";
+             
           } else if (lastDiscussedTitle) {
              finalTitle = lastDiscussedTitle;
              // If it was a solo field, we need to swap them
@@ -4309,13 +4319,13 @@ Output your answer conversationally.`;
 
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
             
-            // 🛡️ SMART TITLE HARVESTER: Extract recommended titles from bold, quotes, or first pattern
-            const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"/g;
+            // 🛡️ SMART TITLE HARVESTER: Extract recommended titles from bold, quotes, brackets, or underscores
+            const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"|'([^']+)'|\[([^\]]+)\]|__([^_]+)__/g;
             const matches = [...conversationalText.matchAll(harvestRegex)];
             if (matches.length > 0) {
                // Use the last match if AI recommended multiple but then asked "add it?"
                const lastMatch = matches[matches.length-1];
-               lastAssistantTitle = (lastMatch[1] || lastMatch[2]).trim();
+               lastAssistantTitle = (lastMatch[1] || lastMatch[2] || lastMatch[3] || lastMatch[4] || lastMatch[5]).trim();
                console.log("🎯 Harvested Title:", lastAssistantTitle);
             }
 
