@@ -1275,6 +1275,7 @@
     let pendingAIConfirmation = false; // tracks when AI asked "Confirm?" but user hasn't responded yet
     let pendingPlatformConfirmation = null; // F3: tracks AI platform fallback review state
     let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
+    let lastAssistantTitle = null;   // 🛡️ PRONOUN LOCKDOWN: tracks AI recommendations
 
     // ============================================================
     // LOGIC ENGINE & HISTORY
@@ -3104,13 +3105,17 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       const isConversational = /me\s+something|like\b|think\b|about\b/i.test(userText); // Test 4b: Hijack Guard
 
       if (isNewCommand) {
-        pendingSelection = null;
-        pendingUpdate = null;
-        pendingAIConfirmation = null;
-        pendingPlatformConfirmation = null;
-        pendingDuplicate = null;
-        pendingAutofill = null;
-        pendingDelete = null;
+        // 🛡️ AMNESIA SHIELD: Don't clear states if the command is a pronoun follow-up
+        const isPronounFollowup = /\b(it|them|this|that|yes|no|yep|nope|sure|ok)\b/i.test(userText);
+        if (!isPronounFollowup) {
+           pendingSelection = null;
+           pendingUpdate = null;
+           pendingAIConfirmation = null;
+           pendingPlatformConfirmation = null;
+           pendingDuplicate = null;
+           pendingAutofill = null;
+           pendingDelete = null;
+        }
       }
 
       // Sweep Command
@@ -4303,6 +4308,14 @@ Output your answer conversationally.`;
             removeTyping();
 
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
+            
+            // 🛡️ BOLD TITLE HARVESTER: Extract recommended titles from natural language
+            const boldMatch = conversationalText.match(/\*\*([^*]+)\*\*/);
+            if (boldMatch) {
+               lastAssistantTitle = boldMatch[1].trim();
+               console.log("🎯 Harvested Title:", lastAssistantTitle);
+            }
+
             const finalDisplay = `${conversationalText}\n\n${previewBlock.trim()}\n\n${aiReply.split('JSON>>>')[1]?.trim() || (aiAsksConfirm ? "" : "Confirm?")}`;
 
             pendingAIConfirmation = { deferred_text: JSON.stringify(updates) };
