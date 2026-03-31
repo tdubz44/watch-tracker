@@ -2704,7 +2704,8 @@ Your goal is to help the user manage their media library and discover their next
     - Use "**Add to Library**" ONLY for discoveries NOT in the library.
 - **ZERO-FORMATTING RULE**: Focus on conversation. Do **NOT** type out metadata tables or long lists; the local UI handles the preview.
 
-### 3. RECOMMENDATION MODE (The Gatekeeper)
+### 3. RECOMMENDATION & BULK MODE (The Gatekeeper)
+- **STRICT BULK INTEGRITY**: If the user asks for a bulk action (e.g., 'all watchlist'), you MUST include 100% of the identified titles in the JSON block. No truncation allowed.
 - **THE HARD FILTER**: NEVER recommend a title already in the library as "Watched" or "Abandoned".
 - **IGNORE THE WATCHING LIST**: Do NOT recommend titles from the "Currently Watching" category.
 - **PRIORITIZATION (Watchlist-First)**:
@@ -2721,12 +2722,14 @@ Your goal is to help the user manage their media library and discover their next
 [
   {
     "title": "Exact Title",
-    "action": "add" | "update",
+    "action": "add" | "update" | "mention" | "search",
     "status": "Watchlist" | "Watching" | "Watched" | "Abandoned",
     "platform": "Disney" | "Apple TV" | "Netflix" | "Prime" | "Crave"
   }
 ]
 JSON>>>
+- **EXPLICIT MENTION**: Use action: "mention" for ANY title you recommend or discuss but aren't currently adding or updating.
+
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
 - **NEVER** recommend or add the show "Ed" (2000) for typos or ambiguous requests (e.g. "blck beauty" or "mark watched"). 
 - If you detect a likely typo (e.g. "blck beauty"), DO NOT ask "Did you mean...?" and DO NOT guess metadata. Instead, output only the corrected title and tell the user you are searching for it. 
@@ -2785,7 +2788,17 @@ JSON>>>
         }
 
         const updates = Array.isArray(parsed) ? parsed : [parsed];
-        updates.forEach(item => {
+
+        // 🎯 SILENT DATA PUMP: Recognize 'mention' actions to set context
+        const mentions = updates.filter(u => u.action === 'mention');
+        if (mentions.length > 0) {
+            lastAssistantTitle = mentions[mentions.length - 1].title;
+            console.log("🎯 Context set via Mention JSON:", lastAssistantTitle);
+        }
+
+        const realUpdates = updates.filter(u => u.action !== 'mention' && u.action !== 'search');
+
+        realUpdates.forEach(item => {
           if (item.title && typeof item.title === 'string' && item.title === item.title.toLowerCase()) {
             item.title = item.title.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
           }
@@ -2798,7 +2811,7 @@ JSON>>>
           }
         });
 
-        const result = await applyUpdates(updates);
+        const result = realUpdates.length > 0 ? await applyUpdates(realUpdates) : { added: 0, updated: 0, skipped: 0, skippedTitles: [] };
         saveLibrary();
         updateStats();
         refreshSearch();
@@ -4266,19 +4279,21 @@ Output your answer conversationally.`;
         const hasJSON = /<<<JSON[\s\S]*?JSON>>>/.test(aiReply);
         const aiAsksConfirm = /confirm (add|update|change|it)\??/i.test(aiStripped);
 
-        // 🛡️ UNIVERSAL TITLE HARVESTER: Scan EVERY AI message for titles (ignore buttons)
+        // 🛡️ UNIVERSAL TITLE HARVESTER: Legacy fallback (Strict Filter)
         const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"|'([^']+)'|\[([^\]]+)\]|__([^_]+)__/g;
         const matches = [...aiReply.matchAll(harvestRegex)];
-        const BAD_HARVEST = /^(add to library|confirm|yes|no|move to|watched|watching|watchlist|abandoned|add|delete|update)$/i;
+        const BAD_HARVEST = /^(add to library|confirm|yes|no|move to|watched|watching|watchlist|abandoned|add|delete|update|move|mark)$/i;
 
         if (matches.length > 0) {
            const validMatch = matches.find(m => {
               const val = (m[1] || m[2] || m[3] || m[4] || m[5] || "").trim();
-              return val && !BAD_HARVEST.test(val);
+              // 🛡️ SEARCH SAFETY: Exclude chatty sentences (starts with common verbs/pronouns)
+              const isSentence = /^(let's|i'll|i'm|it|there|here|this|that|move|if|when|why|how)\b/i.test(val);
+              return val && !BAD_HARVEST.test(val) && !isSentence && val.length < 100;
            });
            if (validMatch) {
               lastAssistantTitle = (validMatch[1] || validMatch[2] || validMatch[3] || validMatch[4] || validMatch[5]).trim();
-              console.log("🎯 Universally Harvested Title:", lastAssistantTitle);
+              console.log("🎯 Harvester set context (Fallback):", lastAssistantTitle);
            }
         }
 
