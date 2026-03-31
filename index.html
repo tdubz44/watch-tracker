@@ -2390,59 +2390,69 @@
       for (const op of updates) {
         if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
 
-        // Normalize input title for robust lookup
         const searchTitle = String(op.title).trim();
         const existing = findByTitle(searchTitle);
         const action = (op.action || '').toLowerCase().trim();
 
-        // 🏆 SMART UPSERT: If update requested for missing item, add it.
         if (action === 'update' || action === 'add') {
           const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
           const normalized = normalizeFields(rawFields);
 
           if (existing) {
-            // --- G1: Async Progress Normalization ---
+            const changedDetail = [];
+            
             if (normalized.progress) {
               normalized.progress = await normalizeProgressValue(existing, normalized.progress);
             }
 
-            // 🏆 Central Smart Status: if show was Watchlist and we now have progress
             if (existing.status === 'Watchlist' && (normalized.progress || existing.progress) && !normalized.status) {
               normalized.status = 'Watching'
             }
 
-            Object.assign(existing, normalized);
-            
-            // 🔥 UNIVERSAL SANITIZATION
-            sanitizeItem(existing, !!normalized.status);
-            
-            updated++;
-          } else {
-            // New item (even if action was 'update')
-            const newItem = { title: searchTitle, ...normalized };
+            const FIELD_LABELS = {
+              'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
+              'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
+              'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
+            };
 
-            // 🔥 FETCH TMDB DATA if missing core fields
+            for (const key in normalized) {
+              if (normalized[key] !== existing[key]) {
+                const label = FIELD_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1));
+                const oldVal = existing[key] || 'none';
+                let newVal = normalized[key];
+                
+                // Consistency Title Case (matches single-item flow)
+                if (['primary_genre', 'subgenres', 'tone'].includes(key)) {
+                  newVal = titleCaseList(newVal);
+                }
+
+                changedDetail.push(`${label}: "${oldVal}" \u2192 "**${newVal}**"`);
+                existing[key] = normalized[key];
+              }
+            }
+            
+            sanitizeItem(existing, !!normalized.status);
+            updated++;
+            op._changedDetail = changedDetail;
+          } else {
+            const newItem = { title: searchTitle, ...normalized };
             if (!newItem.year || !newItem.primary_genre) {
               await enrichItemFromTMDb(newItem);
             }
-
-            // --- G1: Async Progress Normalization ---
             if (newItem.progress) {
               newItem.progress = await normalizeProgressValue(newItem, newItem.progress);
             }
-
-            // 🔥 UNIVERSAL SANITIZATION
             sanitizeItem(newItem);
-
             library.push(newItem);
             added++;
+            op._changedDetail = ["New Item"];
           }
         } else if (action === 'delete') {
           if (!existing) { skipped++; skippedTitles.push(searchTitle); continue; }
           const idx = library.indexOf(existing);
           if (idx > -1) {
             library.splice(idx, 1);
-            updated++; // treat delete as an update for count
+            updated++;
           }
         }
       }
@@ -4201,8 +4211,8 @@ Output your answer conversationally.`;
             
             if (result) {
               const report = updates.map(u => {
-                const keys = Object.keys(u).filter(k => k !== 'title' && k !== 'action').join(', ');
-                return `- ${u.title}: ${keys || 'metadata'}`;
+                const details = (u._changedDetail || []).join(', ');
+                return `- ${u.title}: ${details || 'no changes'}`;
               }).join('\n');
               addMsg('assistant', `✅ **Update Report**:\n${report}`);
             } else {
