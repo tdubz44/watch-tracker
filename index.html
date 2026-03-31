@@ -4320,14 +4320,22 @@ Output your answer conversationally.`;
 
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
             
-            // 🛡️ SMART TITLE HARVESTER: Extract recommended titles from bold, quotes, brackets, or underscores
+            // 🛡️ SMART TITLE HARVESTER: Extract recommended titles (filtering out action phrases)
             const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"|'([^']+)'|\[([^\]]+)\]|__([^_]+)__/g;
             const matches = [...conversationalText.matchAll(harvestRegex)];
+            const BAD_HARVEST = /^(add to library|confirm|yes|no|move to|watched|watching|watchlist|abandoned|add|delete|update)$/i;
+
             if (matches.length > 0) {
-               // Use the last match if AI recommended multiple but then asked "add it?"
-               const lastMatch = matches[matches.length-1];
-               lastAssistantTitle = (lastMatch[1] || lastMatch[2] || lastMatch[3] || lastMatch[4] || lastMatch[5]).trim();
-               console.log("🎯 Harvested Title:", lastAssistantTitle);
+               // Find the FIRST match that isn't a "BAD" title (like a button label)
+               const validMatch = matches.find(m => {
+                  const val = (m[1] || m[2] || m[3] || m[4] || m[5] || "").trim();
+                  return val && !BAD_HARVEST.test(val);
+               });
+
+               if (validMatch) {
+                  lastAssistantTitle = (validMatch[1] || validMatch[2] || validMatch[3] || validMatch[4] || validMatch[5]).trim();
+                  console.log("🎯 Harvested Title:", lastAssistantTitle);
+               }
             }
 
             const finalDisplay = `${conversationalText}\n\n${previewBlock.trim()}\n\n${aiReply.split('JSON>>>')[1]?.trim() || (aiAsksConfirm ? "" : "Confirm?")}`;
