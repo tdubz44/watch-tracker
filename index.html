@@ -1350,60 +1350,52 @@
     const CHUNK_SIZE = 200; // items per storage key
 
     async function loadStorage() {
+      try {
+        // Try high-limit chunked storage FIRST (Priority)
+        let metaResult = null;
+        try { metaResult = await window.storage.get(STORAGE_KEY + '_meta'); } catch (e) { }
 
-      const full = localStorage.getItem(STORAGE_KEY + "_full");
-      if (full) {
-        library = JSON.parse(full);
-        console.log("Loaded from localStorage");
-      } else {
-        try {
-          // Try chunked storage first
-          let metaResult = null;
-          try { metaResult = await window.storage.get(STORAGE_KEY + '_meta'); } catch (e) { }
-
-          if (metaResult && metaResult.value) {
-            const meta = JSON.parse(metaResult.value);
-            let merged = [];
-            for (let i = 0; i < meta.chunks; i++) {
-              try {
-                const chunk = await window.storage.get(STORAGE_KEY + '_chunk_' + i);
-                if (chunk && chunk.value) merged = merged.concat(JSON.parse(chunk.value));
-              } catch (e) { }
-            }
-            library = merged;
-
-            // normalizeLibrary migrates legacy field names
+        if (metaResult && metaResult.value) {
+          const meta = JSON.parse(metaResult.value);
+          let merged = [];
+          for (let i = 0; i < meta.chunks; i++) {
+            try {
+              const chunk = await window.storage.get(STORAGE_KEY + '_chunk_' + i);
+              if (chunk && chunk.value) merged = merged.concat(JSON.parse(chunk.value));
+            } catch (e) { }
+          }
+          library = merged;
+          console.log("Loaded from Window Storage Chunks:", library.length);
+          normalizeLibrary();
+        } else {
+          // Fall back to localStorage (legacy/backup)
+          const full = localStorage.getItem(STORAGE_KEY + "_full");
+          if (full) {
+            library = JSON.parse(full);
+            console.log("Loaded from localStorage_full");
             normalizeLibrary();
-            await saveLibrary();
-
+            await saveLibrary(); // Migrate to chunks immediately
           } else {
-            // Fall back to legacy single-key storage
+            // Last resort: single-key storage
             try {
               const libResult = await window.storage.get(STORAGE_KEY);
               if (libResult && libResult.value) {
                 library = JSON.parse(libResult.value);
-
                 normalizeLibrary();
-                // Migrate to chunked storage immediately
                 await saveLibrary();
               }
             } catch (e) { }
           }
-          // Universal Backfill & One-Time Sweeps
-          library.forEach(item => {
-            if (!('date_watched' in item)) item.date_watched = '';
-          });
-
-          // 🏆 UNIVERSAL NORMALIZATION (Always happens after ANY load)
-          if (library && library.length > 0) {
-            normalizeLibrary();
-            await saveLibrary();
-            await saveLibrary();
-          }
-        } catch (e) {
-          console.warn("Storage load failed", e);
-          library = [];
         }
+
+        // Backfill & Cleanup
+        library.forEach(item => {
+          if (!('date_watched' in item)) item.date_watched = '';
+        });
+
+      } catch (e) {
+        console.warn("Storage load failed", e);
+        library = [];
       }
 
       try {
@@ -2387,6 +2379,9 @@
       saveHistoryState();
       let added = 0, updated = 0, skipped = 0;
       const skippedTitles = [];
+      const updatedTitles = [];
+      const addedTitles = [];
+
       for (const op of updates) {
         if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
 
@@ -2400,51 +2395,25 @@
 
           if (existing) {
             const changedDetail = [];
-            
-            if (normalized.progress) {
-              normalized.progress = await normalizeProgressValue(existing, normalized.progress);
-            }
-
-            if (existing.status === 'Watchlist' && (normalized.progress || existing.progress) && !normalized.status) {
-              normalized.status = 'Watching'
-            }
-
-            const FIELD_LABELS = {
-              'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
-              'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
-              'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
-            };
-
             for (const key in normalized) {
               if (normalized[key] !== existing[key]) {
-                const label = FIELD_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1));
-                const oldVal = existing[key] || 'none';
-                let newVal = normalized[key];
-                
-                // Consistency Title Case (matches single-item flow)
-                if (['primary_genre', 'subgenres', 'tone'].includes(key)) {
-                  newVal = titleCaseList(newVal);
-                }
-
-                changedDetail.push(`${label}: "${oldVal}" \u2192 "**${newVal}**"`);
                 existing[key] = normalized[key];
+                changedDetail.push(key);
               }
             }
-            
             sanitizeItem(existing, !!normalized.status);
             updated++;
+            updatedTitles.push(existing.title);
             op._changedDetail = changedDetail;
           } else {
             const newItem = { title: searchTitle, ...normalized };
             if (!newItem.year || !newItem.primary_genre) {
               await enrichItemFromTMDb(newItem);
             }
-            if (newItem.progress) {
-              newItem.progress = await normalizeProgressValue(newItem, newItem.progress);
-            }
             sanitizeItem(newItem);
             library.push(newItem);
             added++;
+            addedTitles.push(newItem.title);
             op._changedDetail = ["New Item"];
           }
         } else if (action === 'delete') {
@@ -2456,7 +2425,7 @@
           }
         }
       }
-      return { added, updated, skipped, skippedTitles };
+      return { added, updated, skipped, skippedTitles, addedTitles, updatedTitles };
     }
 
     async function fetchTMDbData(title) {
@@ -2694,10 +2663,11 @@ Your goal is to help the user manage their media library and discover their next
 
 ### 2. CORE ROLE: THE TRANSLATOR
 - Translate natural language into a JSON update block.
-- **HYGIENE RULE**: Check the **ALL TITLES** list at the top of the context before recommending or adding.
+- **HYGIENE RULE**: Check the **CURRENTLY WATCHING** and **WATCHLIST** lists at the top of the context before recommending or adding.
 - **VOCABULARY RULE**: 
     - Use "**Move to Watching**" for items already in the Watchlist. 
-    - Use "**Add to Library**" ONLY for discoveries NOT in the library.
+    - Use "**Add to Library**" ONLY for discoveries NOT in the library. This requires status: "**Watchlist**" by default, or "**Watching**" if the user explicitly says they are starting it now.
+    - **CRITICAL**: Never use "Library", "New", or "Discovery" as a status. Only use the 4 valid statuses.
 - **ZERO-FORMATTING RULE**: Focus on conversation. Do **NOT** type out metadata tables or long lists; the local UI handles the preview.
 
 ### 3. RECOMMENDATION & BULK MODE (The Gatekeeper)
@@ -2736,7 +2706,7 @@ JSON>>>
 ### 7. BULK COMMAND GRAMMAR (Reliability)
 - **Status Mapping**: "Watchlist", "Watching", "Watched", and "Abandoned" are **STATUSES**. They are never formats or genres.
 - **Format Mapping**: "movies" = format: "Movie", "shows" or "series" = format: "Series", "miniseries" = format: "Miniseries".
-- **Shorthand Pattern**: "move all [Status] to [Status]" or "move all [Format] to [Status]" must always be mapped to a bulk STATUS update. 
+- **Shorthand Pattern**: "move all [Status] to [Status]" or "move all [Format] [Status]" (e.g. "move all watched movies") must always be mapped to the correct multi-field filter. Note: "Watched Movies" is status: "Watched" AND format: "Movie".
 - **Watchlist vs. Library**: "The Watchlist" can refer to the whole library, but in a "move" command, it refers to the **Watchlist Status**.`;
 
     function addMsg(role, text, jsonApplied) {
@@ -3117,8 +3087,24 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              console.log("🔄 Pivoting from confirmation to new command.");
              pendingAIConfirmation = false;
              // Allow fall-through to main engine
+        } else if (affirmatives.includes(reply)) {
+          const deferred = pendingAIConfirmation.deferred_text;
+          pendingAIConfirmation = false;
+          addMsg('user', userText);
+          const jsonResult = await parseAndApplyJSON(deferred);
+          
+          let report = "";
+          if (jsonResult && (jsonResult.added > 0 || jsonResult.updated > 0)) {
+            report = "\n\n**Update Report:**\n";
+            jsonResult.addedTitles?.forEach(t => report += `- ${t}: ✅ Added to Library\n`);
+            jsonResult.updatedTitles?.forEach(t => report += `- ${t}: ✅ Updated\n`);
+          }
+          
+          addMsg('assistant', deferred.split('<<<JSON')[0].trim() + report, jsonResult);
+          return;
         } else if (negatives.includes(reply)) {
           pendingAIConfirmation = false;
+          addMsg('user', userText);
           addMsg('assistant', '\u274c No changes made.');
           return;
         }
