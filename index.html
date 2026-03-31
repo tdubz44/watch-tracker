@@ -3273,6 +3273,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              let finalField = field;
              let finalVal = val;
 
+             saveHistoryState();
+             const oldValBeforeAnyPivots = targetItem[finalField || 'status'] || 'none';
+
              // Re-detect field if not split by Pass 1 (e.g. "update Silo watched")
              if (!finalField) {
                 const vLow = finalVal.toLowerCase();
@@ -3332,6 +3335,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                       }
                    }
                 }
+
+                saveHistoryState();
+                const oldVal = targetItem[actualField] || 'none';
                 
                 targetItem[actualField] = finalVal;
                 sanitizeItem(targetItem, actualField === 'status');
@@ -3363,7 +3369,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // F3. Platform confirmation (Mega-Sweep fallback)
       if (pendingPlatformConfirmation) {
-        if (isAffirmative(reply)) {
+        if (isAffirmative(userText)) {
           pendingPlatformConfirmation.updates.forEach(upd => {
             const item = pendingPlatformConfirmation.originalGaps.find(g => g.title === upd.title);
             if (item) item.platform = upd.platform;
@@ -3373,14 +3379,14 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           pendingPlatformConfirmation = null;
           return;
         }
-        if (isNegative(reply)) {
+        if (isNegative(userText)) {
           pendingPlatformConfirmation = null;
           addMsg('assistant', '\u26a0\ufe0f AI platform suggestions ignored. Blank platforms preserved.');
           return;
         }
 
         // C2. Conversational Interrogation ("Yes, except..." or questions)
-        const isNewCommand = /^(add|update|delete|remove|search|merge|sweep|autofill|recommend|check|show|list|lookup)\b/i.test(reply);
+        const isNewCommand = /^(add|update|delete|remove|search|merge|sweep|autofill|recommend|check|show|list|lookup)\b/i.test(userText);
         if (!isNewCommand) {
           addTyping();
           const p = `The user is reviewing a list of AI-suggested platforms for their library.
