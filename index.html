@@ -2033,6 +2033,8 @@
       if (s === 'watchlist') return 'Watchlist';
       if (s === 'watched') return 'Watched';
       if (s === 'abandoned' || s === 'dropped') return 'Abandoned';
+      
+      console.warn(`🎯 Invalid status "${val}" corrected to "Watchlist"`);
       return 'Watchlist';
     }
 
@@ -2580,60 +2582,40 @@
     // ============================================================
     // ASSISTANT TAB
     // ============================================================
-    function buildLibraryContext(contextNote = '', mode = 'LEAN') {
-      const allWatched = library.filter(x => (x.status || '').toLowerCase() === 'watched');
-      const allWatchlist = library.filter(x => (x.status || '').toLowerCase() === 'watchlist');
-      const allWatching = library.filter(x => (x.status || '').toLowerCase() === 'watching');
-      const allAbandoned = library.filter(x => (x.status || '').toLowerCase() === 'abandoned');
+    function buildLibraryContext(contextNote = '') {
+      const watching = library.filter(x => (x.status || '').toLowerCase() === 'watching');
+      const watchlist = library.filter(x => (x.status || '').toLowerCase() === 'watchlist').slice().reverse();
+      const watched = library.filter(x => (x.status || '').toLowerCase() === 'watched').slice(-40);
+      const abandoned = library.filter(x => (x.status || '').toLowerCase() === 'abandoned');
+      const allTitles = library.map(x => (x.title || 'Untitled')).join('|');
 
-      const moviesCount = library.filter(x => (x.format || '').toLowerCase() === 'movie').length;
-      const seriesCount = library.filter(x => (x.format || '').toLowerCase() === 'series').length;
+      const fmt = arr => arr.map(x => {
+        try {
+          const f = (x.format || '?').charAt(0).toUpperCase() + (x.format || '?').slice(1).toLowerCase();
+          const s = (x.status || '?').charAt(0).toUpperCase() + (x.status || '?').slice(1).toLowerCase();
+          return `${x.title || 'Unknown'} [${f}|${s}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
+        } catch (e) { return 'Error parsing item'; }
+      }).join('\n');
 
-      const fmtShort = x => `[${(x.format || '?').charAt(0).toUpperCase()}|${(x.status || '?').charAt(0).toUpperCase()}]`;
-      const fmtFull = x => {
-        const f = (x.format || '?').charAt(0).toUpperCase() + (x.format || '?').slice(1).toLowerCase();
-        const s = (x.status || '?').charAt(0).toUpperCase() + (x.status || '?').slice(1).toLowerCase();
-        return `[${f}|${s}|${x.platform || '?'}|${x.primary_genre || '?'}|${x.tone || ''}|${x.lifecycle || ''}|${x.progress || ''}|${x.year || ''}|${x.imdbid || ''}]`;
-      };
+      return `=== LIBRARY CONTEXT ===
+TOTAL ITEMS IN LIBRARY: ${library.length} (If this is 0, the library is not loaded!)
+${contextNote}
+CURRENTLY WATCHING (${watching.length}):
+${watching.length ? fmt(watching) : 'None'}
 
-      const buildSection = (arr, title, isRich) => {
-        if (!arr.length) return `None`;
-        if (isRich) return arr.map(x => `${x.title} ${fmtFull(x)}`).join('\n');
-        return arr.map(x => `${x.title} ${fmtShort(x)}`).join('\n');
-      };
+WATCHLIST (100% COVERAGE — MOVE THESE):
+${watchlist.length ? fmt(watchlist) : 'None'}
 
-      let context = `=== LIBRARY CONTEXT ===
-LIBRARY TOTALS: ${library.length} items (${moviesCount} Movies, ${seriesCount} Series)
-MODE: ${mode}
-${contextNote}\n\n`;
+LAST 40 WATCHED:
+${watched.length ? fmt(watched) : 'None'}
 
-      // 1. WATCHING (Always 100% Full Metadata)
-      context += `STATUS: "WATCHING" (Direct Context):\n${buildSection(allWatching, '', true)}\n\n`;
+ABANDONED:
+${abandoned.length ? fmt(abandoned) : 'None'}
 
-      if (mode === 'INVENTORY') {
-        // Full visibility for bulk moves
-        context += `STATUS: "WATCHLIST" (Full Inventory):\n${buildSection(allWatchlist, '', false)}\n\n`;
-        context += `STATUS: "WATCHED" (Full Inventory):\n${buildSection(allWatched, '', false)}\n\n`;
-        context += `STATUS: "ABANDONED" (Full Inventory):\n${buildSection(allAbandoned, '', false)}\n\n`;
-        const allTitles = library.map(x => x.title).join('|');
-        context += `ALL TITLES INDEX (Final Duplicate Check): ${allTitles}`;
-      } else if (mode === 'INDEX') {
-        // Compressed title lists for recommendations
-        context += `WATCHLIST INDEX: ${allWatchlist.map(x => x.title).join('|')}\n\n`;
-        context += `WATCHED INDEX: ${allWatched.map(x => x.title).join('|')}\n\n`;
-        context += `ABANDONED INDEX: ${allAbandoned.map(x => x.title).join('|')}\n\n`;
-        // Top 10 for recently added richness
-        context += `RECENT WATCHLIST:\n${buildSection(allWatchlist.slice(-10), '', true)}\n\n`;
-        const allTitles = library.map(x => x.title).join('|');
-        context += `ALL TITLES INDEX (Final Duplicate Check): ${allTitles}`;
-      } else {
-        // Ultra-Lean default chat
-        context += `RECENT WATCHLIST:\n${buildSection(allWatchlist.slice(-10), '', true)}\n\n`;
-        context += `RECENT WATCHED:\n${buildSection(allWatched.slice(-10), '', true)}\n\n`;
-        context += `(Inventory/Index Mode: OFF. To search your entire 1,700+ collection, please use a broad command like 'recommend' or 'move all'.)`;
-      }
+ALL TITLES (Index for Title Validation):
+${allTitles || 'Empty library'}
 
-      return context;
+Format Guide: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progress|Year|IMDb ID]`;
     }
 
     const SYSTEM_PROMPT = `You are the WatchTracker Assistant.
@@ -2680,7 +2662,8 @@ Your goal is to help the user manage their media library and discover their next
   }
 ]
 JSON>>>
-- **IRONCLAD DELIMITERS**: You MUST wrap every JSON block in '<<<JSON' and 'JSON>>>'. NEVER output raw JSON without these tags.
+- **CRITICAL STATUS RULE**: ONLY use the 4 valid statuses: **Watchlist, Watching, Watched, Abandoned**. NEVER use "Library", "New", or "Discovery" as a status.
+- **IRONCLAD DELIMITERS**: You MUST wrap every JSON block in '<<<JSON' and 'JSON>>>'.
 - **EXPLICIT MENTION**: Use action: "mention" for ANY title you recommend or discuss but aren't currently adding or updating.
 
 ### 6. THE "ED" BLACKLIST (IRONCLAD)
@@ -2705,7 +2688,7 @@ JSON>>>
       const avatar = role === 'user' ? '🎬' : '🤖';
       const rawDisplay = text
         .replace(/<<<JSON[\s\S]*?JSON>>>/g, '') // strip tagged JSON
-        .replace(/^\s*\[\s*\{[\s\S]*?\}\s*\]\s*$/g, '') // Emergency strip for raw JSON arrays
+        .replace(/\s*\[\s*\{[\s\S]*?\}\s*\]\s*/g, '') // Absolute strip (Newline-Agnostic)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .trim();
@@ -3098,7 +3081,13 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
             jsonResult.updatedTitles?.forEach(t => report += `- ${t}: ✅ Updated\n`);
           }
           
-          addMsg('assistant', deferred.split('<<<JSON')[0].trim() + report, jsonResult);
+          // 🛡️ JSON CLEANSE: Remove the JSON block from the deferred text before appending report
+          let cleanDeferred = deferred
+            .replace(/<<<JSON[\s\S]*?JSON>>>/g, '')
+            .replace(/\s*\[\s*\{[\s\S]*?\}\s*\]\s*/g, '') // Also remove untagged arrays
+            .trim();
+
+          addMsg('assistant', cleanDeferred + report, jsonResult);
           return;
         } else if (negatives.includes(reply)) {
           pendingAIConfirmation = false;
@@ -4267,17 +4256,7 @@ Output your answer conversationally.`;
         const contextNote = lastDiscussedTitle
           ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
           : '';
-        // 🎯 Intent Detection (Token-First Pivot)
-      let mode = 'LEAN';
-      const text = userText.toLowerCase().trim();
-      const needsBulk = /\b(all|every|everything|bulk|entire|collection)\b/i.test(text);
-      const needsRecs = /\b(recommend|suggest|similar|like|discovery|discovery)\b/i.test(text);
-      
-      if (needsBulk) mode = 'INVENTORY';
-      else if (needsRecs) mode = 'INDEX';
-      
-      const libraryContext = buildLibraryContext(contextNote, mode);
-      console.log(`🧠 AI Context Activation Mode: ${mode}`);
+        const libraryContext = buildLibraryContext(contextNote);
         const userMsgWithContext = `${libraryContext}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
 
         const messages = [
