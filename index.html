@@ -1274,6 +1274,7 @@
     let pendingDedup = null;         // dedup confirmation state
     let pendingAIConfirmation = false; // tracks when AI asked "Confirm?" but user hasn't responded yet
     let pendingPlatformConfirmation = null; // F3: tracks AI platform fallback review state
+    let pendingBulkDelete = null;    // 🛡️ 3c: tracks bulk deletion confirmation
     let lastDiscussedTitle = null;   // A3: tracks last title in context for implicit follow-ups
     let lastAssistantTitle = null;   // 🛡️ PRONOUN LOCKDOWN: tracks AI recommendations
 
@@ -2353,20 +2354,30 @@
       for (const op of updates) {
         if (!op.title || !op.action) { skipped++; skippedTitles.push('(invalid entry)'); continue; }
 
-        const searchTitle = String(op.title).trim();
-        const existing = findByTitle(searchTitle);
-        const action = (op.action || '').toLowerCase().trim();
+          const action = (op.action || '').toLowerCase().trim();
+          const searchTitle = String(op.title || '').trim();
 
-        if (action === 'update' || action === 'add') {
-          const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
-          const normalized = normalizeFields(rawFields);
+          if (action === 'update' || action === 'add') {
+            const rawFields = op.fields || (() => { const { action, title, ...rest } = op; return rest; })();
+            const normalized = normalizeFields(rawFields);
 
-          if (existing) {
+            // 🛡️ 4d: Harden Title Resolution for AI Updates
+            let existing = findByTitle(searchTitle);
+            if (!existing && searchTitle) {
+               existing = findByTitleFuzzy(searchTitle);
+               if (existing) console.log(`🔍 4d: Exact match failed for "${searchTitle}", found fuzzy match: "${existing.title}"`);
+            }
+
+            if (existing) {
             const changedDetail = [];
             for (const key in normalized) {
-              if (normalized[key] !== existing[key]) {
+              const oldVal = (existing[key] === undefined || existing[key] === null || String(existing[key]).trim() === '') ? 'none' : String(existing[key]);
+              const newVal = (normalized[key] === undefined || normalized[key] === null || String(normalized[key]).trim() === '') ? 'none' : String(normalized[key]);
+              
+              if (newVal !== oldVal) {
                 existing[key] = normalized[key];
-                changedDetail.push(key);
+                const fLabel = key.charAt(0).toUpperCase() + key.slice(1);
+                changedDetail.push(`${fLabel}: "${oldVal}" \u2192 "**${newVal}**"`);
               }
             }
             sanitizeItem(existing, !!normalized.status);
@@ -2393,7 +2404,7 @@
           }
         }
       }
-      return { added, updated, skipped, skippedTitles, addedTitles, updatedTitles };
+      return { added, updated, skipped, skippedTitles, addedTitles, updatedTitles, updatedDetails: updates.filter(u => u._changedDetail).map(u => ({ title: u.title, detail: u._changedDetail })) };
     }
 
     async function fetchTMDbData(title) {
@@ -2526,6 +2537,11 @@
         if (details.status === "Returning Series") item.lifecycle = "Ongoing";
         else if (details.status === "Ended") item.lifecycle = "Finished";
         else if (details.status === "Canceled") item.lifecycle = "Cancelled";
+      }
+
+      // 🛡️ TONE (AI) - Added Surgically for Sweep
+      if (!item.tone) {
+        item.tone = await detectToneAI(details, normalizedGenres);
       }
 
       return item;
@@ -2839,7 +2855,8 @@ JSON>>>
       let filledCount = 0;
       let repairCount = 0;
       let platformGaps = [];
-      const AUTOFILL_FIELDS = ['year', 'runtime', 'imdbid', 'format', 'seasons', 'primary_genre', 'subgenres', 'lifecycle'];
+      const AUTOFILL_FIELDS = ['year', 'runtime', 'imdbid', 'format', 'seasons', 'primary_genre', 'subgenres', 'lifecycle', 'tone'];
+      const sweepDetail = [];
 
       // Process in a single pass
       for (let item of library) {
@@ -2864,22 +2881,27 @@ JSON>>>
               
               const enriched = await enrichItemFromTMDb({ ...item }); // use a proxy to check diffs
               
-              // Apply SILENT facts (year, runtime, format, id, genres, lifecycle)
+              // Apply SILENT facts (year, runtime, format, id, genres, lifecycle, tone)
               AUTOFILL_FIELDS.forEach(f => {
                 const newVal = enriched[f];
                 if (newVal && (!item[f] || String(item[f]).trim() === '')) {
+                  const oldV = 'none';
                   item[f] = newVal;
                   filledCount++;
                   changed = true;
+                  const fLabel = f.charAt(0).toUpperCase() + f.slice(1);
+                  sweepDetail.push(`**${item.title}** ${fLabel}: "${oldV}" \u2192 "**${newVal}**"`);
                 }
               });
 
               // Check Platform immediately via JustWatch (TMDb)
               if (needsPlatform) {
                 if (enriched.platform) {
+                  const oldV = 'none';
                   item.platform = enriched.platform;
                   filledCount++;
                   changed = true;
+                  sweepDetail.push(`**${item.title}** Platform: "${oldV}" \u2192 "**${enriched.platform}**"`);
                 } else {
                   // No TMDb platform? Add to AI fallback list
                   platformGaps.push(item);
@@ -2925,19 +2947,25 @@ JSON>>>
       saveLibrary(); updateStats(); refreshSearch(); renderWatching();
       removeTyping();
 
+      let reportSummary = "";
+      if (sweepDetail.length > 0) {
+          reportSummary = "\n\n**Sweep Details:**\n" + sweepDetail.slice(0, 10).map(d => `- ${d}`).join('\n');
+          if (sweepDetail.length > 10) reportSummary += `\n...and ${sweepDetail.length - 10} more repairs.`;
+      }
+
       if (platformGaps.length > 0) {
-        handlePlatformFallback(platformGaps, filledCount, repairCount);
+        handlePlatformFallback(platformGaps, filledCount, repairCount, reportSummary);
       } else {
-        addMsg('assistant', `✨ **Mega-Sweep Complete!**\nSilently filled **${filledCount}** fields and performed **${repairCount}** automated repairs.\n\nYour library is now perfectly standardized.`);
+        addMsg('assistant', `✨ **Mega-Sweep Complete!**\nSilently filled **${filledCount}** fields and performed **${repairCount}** automated repairs.${reportSummary}\n\nYour library is now perfectly standardized.`);
       }
     }
 
-    async function handlePlatformFallback(gaps, filled, repairs) {
+    async function handlePlatformFallback(gaps, filled, repairs, reportSummary = "") {
       addTyping();
       const API_KEY = getOpenAIKey();
       if (!API_KEY) {
         removeTyping();
-        addMsg('assistant', `Sweep complete (${filled} fields, ${repairs} repairs). However, I couldn't check for missing platforms because no API key is set.`);
+        addMsg('assistant', `Sweep complete (${filled} fields, ${repairs} repairs).${reportSummary}\n\nHowever, I couldn't check for missing platforms because no API key is set.`);
         return;
       }
 
@@ -2966,7 +2994,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           grouped[a.platform].push(a.title);
         });
 
-        let display = `🧹 **Mega-Sweep Complete!**\nSilently filled **${filled}** fields and performed **${repairs}** repairs.\n\nHowever, TMDb couldn't find Platforms for **${assignments.length}** titles. My AI knowledge suggests:`;
+        let display = `🧹 **Mega-Sweep Complete!**\nSilently filled **${filled}** fields and performed **${repairs}** repairs.${reportSummary}\n\nHowever, TMDb couldn't find Platforms for **${assignments.length}** titles. My AI knowledge suggests:`;
 
         for (const [platform, titles] of Object.entries(grouped)) {
           display += `\n\n**${platform} (${titles.length})**`;
@@ -2988,6 +3016,82 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         removeTyping();
         addMsg('assistant', `Sweep complete (${filled} fields, ${repairs} repairs). AI platform fallback failed.`);
       }
+    }
+
+    // ============================================================
+    // 🛡️ 3c: LOCAL BULK INTERCEPTOR (Hardened)
+    // ============================================================
+    function handleLocalBulkAction(userText) {
+      const text = userText.toLowerCase().trim();
+      
+      // Pattern 1: Move/Mark (e.g. "move all watched movies to watchlist")
+      const moveRegex = /^(?:move|mark|update|set)\s+all\s+(?:(watchlist|watching|watched|abandoned)\s+)?(?:(movies|shows|series|miniseries)\s+)?to\s+(watchlist|watching|watched|abandoned)$/i;
+      
+      // Pattern 2: Delete/Remove (e.g. "delete all abandoned shows")
+      const deleteRegex = /^(?:delete|remove|clear)\s+all\s+(?:(watchlist|watching|watched|abandoned)\s+)?(?:(movies|shows|series|miniseries))?$/i;
+      
+      const mMatch = text.match(moveRegex);
+      const dMatch = text.match(deleteRegex);
+      
+      if (!mMatch && !dMatch) return false;
+      
+      let src = (mMatch ? mMatch[1] : dMatch[1]) || null;
+      let fmt = (mMatch ? mMatch[2] : dMatch[2]) || null;
+      let tgt = mMatch ? mMatch[3] : null;
+      
+      // Map to Schema
+      const sMap = { 'watchlist': 'Watchlist', 'watching': 'Watching', 'watched': 'Watched', 'abandoned': 'Abandoned' };
+      const fMap = { 'movies': 'Movie', 'shows': 'Series', 'series': 'Series', 'miniseries': 'Miniseries' };
+      const rFMap = { 'Movie': 'movies', 'Series': 'series', 'Miniseries': 'miniseries' };
+      
+      const sSrc = src ? sMap[src] : null;
+      const sFmt = fmt ? fMap[fmt] : null;
+      const sTgt = tgt ? sMap[tgt] : null;
+      
+      const targets = library.filter(item => {
+        const sOk = !sSrc || item.status === sSrc;
+        const fOk = !sFmt || item.format === sFmt;
+        return sOk && fOk;
+      });
+      
+      if (targets.length === 0) {
+        addMsg('assistant', `ℹ️ No titles found matching your filter${src ? ` (Status: ${sSrc})` : ''}${fmt ? ` (Format: ${sFmt})` : ''}.`);
+        return true;
+      }
+      
+      if (dMatch) {
+         // Generate label for the prompt
+         const label = `${src || ''} ${fmt || ''}`.trim() || "All Titles";
+         pendingBulkDelete = { targets, label };
+         addMsg('assistant', `⚠️ **Bulk Delete Confirmation**\n\nYou are about to remove **${targets.length}** title(s) from your library (${label}).\n\n**Proceed?** (yes/no)`);
+         return true;
+      }
+      
+      if (mMatch) {
+         saveHistoryState();
+         const updates = [];
+         targets.forEach(item => {
+           const old = item.status || 'none';
+           if (old !== sTgt) {
+              item.status = sTgt;
+              if (sTgt === 'Watched') item.progress = '';
+              updates.push(`${item.title}: "${old}" \u2192 "**${sTgt}**"`);
+           }
+         });
+         
+         saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+         
+         let report = `✅ **Bulk Update Complete**\nMoved **${updates.length}** title(s) to **${sTgt}**.`;
+         if (updates.length > 0) {
+            report += `\n\n**Details:**\n- ` + updates.slice(0, 20).join('\n- ');
+            if (updates.length > 20) report += `\n- ... and ${updates.length - 20} more.`;
+         }
+         
+         addMsg('assistant', report);
+         return true;
+      }
+      
+      return false;
     }
 
 
@@ -3068,7 +3172,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              console.log("🔄 Pivoting from confirmation to new command.");
              pendingAIConfirmation = false;
              // Allow fall-through to main engine
-        } else if (affirmatives.includes(reply)) {
+        } else if (/^(yes|y|ok|okay|sure|confirm|yep|yeah|yea|ya|affirmative|let's|start|go|do it|apply)\b/i.test(reply)) {
           const deferred = pendingAIConfirmation.deferred_text;
           pendingAIConfirmation = false;
           addMsg('user', userText);
@@ -3076,18 +3180,22 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           
           let report = "";
           if (jsonResult && (jsonResult.added > 0 || jsonResult.updated > 0)) {
-            report = "\n\n**Update Report:**\n";
-            jsonResult.addedTitles?.forEach(t => report += `- ${t}: ✅ Added to Library\n`);
-            jsonResult.updatedTitles?.forEach(t => report += `- ${t}: ✅ Updated\n`);
+            report = "**Update Report:**\n";
+            jsonResult.addedTitles?.forEach(t => report += `- ${t}: ✅ Added\n`);
+            jsonResult.updatedTitles?.forEach(t => {
+                const upd = (jsonResult.updatedDetails || []).find(ud => ud.title === t);
+                const changes = Array.isArray(upd?.detail) ? upd.detail : (upd?.detail ? [upd.detail] : ['Updated']);
+                report += `- **${t}**:\n  - ` + changes.join('\n  - ') + '\n';
+            });
+          } else if (jsonResult) {
+             const titles = (jsonResult.updatedTitles?.length || jsonResult.addedTitles?.length) 
+               ? "" // Don't show 'already up to date' if something changed
+               : (jsonResult.skippedTitles?.join(', ') || 'No titles');
+             if (titles) report = `ℹ️ Already up to date (${titles}).`;
           }
           
-          // 🛡️ JSON CLEANSE: Remove the JSON block from the deferred text before appending report
-          let cleanDeferred = deferred
-            .replace(/<<<JSON[\s\S]*?JSON>>>/g, '')
-            .replace(/\s*\[\s*\{[\s\S]*?\}\s*\]\s*/g, '') // Also remove untagged arrays
-            .trim();
-
-          addMsg('assistant', cleanDeferred + report, jsonResult);
+          // 🛡️ 3d: Only show the report, don't repeat the original suggestion
+          addMsg('assistant', report || '✅ Applied.', jsonResult);
           return;
         } else if (negatives.includes(reply)) {
           pendingAIConfirmation = false;
@@ -3107,7 +3215,8 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // A1: New Command Override (State Clear)
       const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(userText) || userText.includes('=');
-      const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b/i.test(userText); // Test 4b: Hijack Guard
+      // 🛡️ 4b: DISCOVERY GUARD (Refined) - pick up more inquiry verbs
+      const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b|should|if\b/i.test(userText); 
 
       if (isNewCommand) {
         // 🛡️ AMNESIA SHIELD: Don't clear states if the command is a pronoun follow-up
@@ -3123,11 +3232,13 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         }
       }
 
-      // Sweep Command
       if (['sweep', 'clean', 'fix library'].includes(userText)) {
         runLibraryCleanup();
         return;
       }
+
+      // 🛡️ 3c: LOCAL BULK ACTION INTERCEPTOR (Moves & Deletes)
+      if (handleLocalBulkAction(userText)) return;
 
       // Catch JSON block { ... } — treat as data
       const jsonBlockMatch = userText.match(/({[\s\S]+})$/);
@@ -3182,14 +3293,21 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       // PASS 2: Verb Match (Fallback)
       // Matches "add Title", "delete Title", etc.
       else {
-         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check)\s+(.+)$/i);
+         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check|fix)\s+([\s\S]+)$/i);
          if (verbMatch) {
-            // 🛡️ CONVERSATIONAL GUARD: If it's a "Show me..." recommendation request, bypass local metadata.
+            // 🛡️ 4b/4c: RECOMMENDER GUARD - If conversational recommendation, bypass local intercept
             if (isConversational && (verbMatch[1].toLowerCase() === 'show' || verbMatch[1].toLowerCase() === 'check')) {
                console.log("🗣️ Conversational 'Show' detected - bypassing local intercept.");
             } else {
                verb = verbMatch[1].toLowerCase();
                rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
+               
+               // 🛡️ 3c: Grammar Shield - Split "Title to Status"
+               const toMatch = rawTitle.match(/^([\s\S]+?)\s+to\s+(watching|watchlist|watched|abandoned)$/i);
+               if (toMatch) {
+                  rawTitle = toMatch[1].trim();
+                  val = toMatch[2].trim();
+               }
             }
          }
       }
@@ -3201,7 +3319,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         const lowerT = rawTitle.toLowerCase();
         const isSoloField = VALID_FIELDS.includes(lowerT); // v18.48: Implicit Field Targeting
 
-        if (PRONOUNS.includes(lowerT) || NOISY.includes(lowerT) || isSoloField) {
+        if ((PRONOUNS.includes(lowerT) || NOISY.includes(lowerT) || isSoloField) && !isConversational) {
           // 🛡️ ED LOCKDOWN: Strict pronoun/field resolution
           if (lowerT === 'it' || lowerT === 'them') {
              // 1. Prioritize what the Assistant JUST suggested
@@ -3248,9 +3366,15 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           // --- CASE 1: ADDING ---
           if (verb === 'add' || (!verb && !targetItem && val)) {
             if (targetItem) {
-               addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
-               lastDiscussedTitle = targetItem.title;
-               return;
+               // 🛡️ SMART PIVOT (A1/A2): If title exists, transition to UPDATE intent if field/val present.
+               if (field || val) {
+                  verb = 'update';
+                  // Fall-through to update logic below
+               } else {
+                  addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
+                  lastDiscussedTitle = targetItem.title;
+                  return;
+               }
             } else {
                addTyping();
                const searchTitle = finalTitle || rawTitle;
@@ -3306,13 +3430,54 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
               }
             }
           }
-          // --- CASE 3: UPDATING ---
+          // --- CASE 3: UPDATING (Unified Command Engine) ---
           else if (targetItem && (verb || val)) {
              let finalField = field;
              let finalVal = val;
+             let statusShiftReport = "";
+             const statuses = ['watching', 'watchlist', 'watched', 'abandoned', 'dropped'];
 
-             saveHistoryState();
-             const oldValBeforeAnyPivots = targetItem[finalField || 'status'] || 'none';
+             if (val && statuses.some(s => val.toLowerCase().includes(s))) {
+                const targetStatus = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+                if (targetItem.status !== targetStatus) {
+                   targetItem.status = targetStatus;
+                   changed.push('status');
+                }
+                finalField = 'status';
+                finalVal = targetStatus;
+             }
+
+             // 🛡️ DATA FETCH: If user says "update [title] data" (no specific value), trigger TMDb/AI.
+             if (!finalVal || finalVal.toLowerCase() === 'data' || finalVal.toLowerCase() === 'metadata' || verb === 'move') {
+                addTyping();
+                const updatedData = await enrichItemFromTMDb({...targetItem});
+                removeTyping();
+                
+                const changed = [];
+                if (statusShiftReport) changed.push(statusShiftReport);
+                const snapshot = JSON.parse(JSON.stringify(targetItem));
+                
+                for(let f in updatedData) {
+                    if (updatedData[f] && String(updatedData[f]) !== String(targetItem[f])) {
+                        targetItem[f] = updatedData[f];
+                        changed.push(f);
+                    }
+                }
+                if (changed.length > 0) {
+                    saveHistoryState();
+                    saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+                    const report = changed.map(f => {
+                        const FIELD_LABELS = { 'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID' };
+                        const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
+                        const oldV = (snapshot[f] === undefined || snapshot[f] === null || String(snapshot[f]).trim() === '') ? 'none' : String(snapshot[f]);
+                        return `- ${fLabel}: "${oldV}" \u2192 "**${targetItem[f]}**"`;
+                    }).join('\n');
+                    addMsg('assistant', `✅ **Metadata Updated** for **${targetItem.title}**:\n${report}`);
+                } else {
+                    addMsg('assistant', `ℹ️ Already up to date. No new metadata found for **${targetItem.title}**.`);
+                }
+                return;
+             }
 
              // Re-detect field if not split by Pass 1 (e.g. "update Silo watched")
              if (!finalField) {
@@ -3706,6 +3871,25 @@ Output your answer conversationally.`;
         }
 
         addMsg('assistant', 'Please reply yes or no 🙂');
+        return;
+      }
+
+      // 🛡️ 3c: PENDING BULK DELETE HANDLER (Hardened)
+      if (pendingBulkDelete) {
+        if (isAffirmative(reply)) {
+          const targetIds = new Set(pendingBulkDelete.targets);
+          library = library.filter(item => !targetIds.has(item));
+          saveLibrary(); refreshSearch(); renderWatching(); updateStats();
+          addMsg('assistant', `✅ **Bulk Delete Complete**\nRemoved **${pendingBulkDelete.targets.length}** title(s) (${pendingBulkDelete.label}).`);
+          pendingBulkDelete = null;
+          return;
+        }
+        if (isNegative(reply)) {
+          addMsg('assistant', '👍 Bulk deletion cancelled.');
+          pendingBulkDelete = null;
+          return;
+        }
+        addMsg('assistant', 'Proceed with the bulk deletion? (yes or no)');
         return;
       }
 
@@ -4281,23 +4465,6 @@ Output your answer conversationally.`;
         const hasJSON = /<<<JSON[\s\S]*?JSON>>>/.test(aiReply);
         const aiAsksConfirm = /confirm (add|update|change|it)\??/i.test(aiStripped);
 
-        // 🛡️ UNIVERSAL TITLE HARVESTER: Legacy fallback (Strict Filter)
-        const harvestRegex = /\*\*([^*]+)\*\*|"([^"]+)"|'([^']+)'|\[([^\]]+)\]|__([^_]+)__/g;
-        const matches = [...aiReply.matchAll(harvestRegex)];
-        const BAD_HARVEST = /^(add to library|confirm|yes|no|move to|watched|watching|watchlist|abandoned|add|delete|update|move|mark)$/i;
-
-        if (matches.length > 0) {
-           const validMatch = matches.find(m => {
-              const val = (m[1] || m[2] || m[3] || m[4] || m[5] || "").trim();
-              // 🛡️ SEARCH SAFETY: Exclude chatty sentences (starts with common verbs/pronouns)
-              const isSentence = /^(let's|i'll|i'm|it|there|here|this|that|move|if|when|why|how)\b/i.test(val);
-              return val && !BAD_HARVEST.test(val) && !isSentence && val.length < 100;
-           });
-           if (validMatch) {
-              lastAssistantTitle = (validMatch[1] || validMatch[2] || validMatch[3] || validMatch[4] || validMatch[5]).trim();
-              console.log("🎯 Harvester set context (Fallback):", lastAssistantTitle);
-           }
-        }
 
         if (hasJSON) {
           try {
@@ -4376,7 +4543,10 @@ Output your answer conversationally.`;
         }
 
         if (aiAsksConfirm) {
-          pendingAIConfirmation = hasJSON ? { deferred_text: aiReply } : true;
+          // 🛡️ 3g: Always capture the payload if JSON is present, otherwise fallback to Boolean
+          pendingAIConfirmation = (hasJSON || aiReply.includes('<<<JSON')) 
+            ? { deferred_text: aiReply } 
+            : true;
         } else {
           const jsonResult = await parseAndApplyJSON(aiReply);
           pendingAIConfirmation = false;
@@ -4578,7 +4748,7 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
   </script>
 
   <script>
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
       navigator.serviceWorker.register('./service-worker.js')
         .then(() => console.log("Service Worker registered"))
         .catch(err => console.warn("Service worker failed", err));
