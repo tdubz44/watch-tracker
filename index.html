@@ -3475,8 +3475,8 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       if (!isPivotRecursion) addMsg('user', userText);
 
       const reply = userText.trim().toLowerCase();
-      const actionPartBase = userText.split(' ')[0].toLowerCase();
-      const followUpBase = userText.substring(actionPartBase.length).trim();
+      const actionPart = userText.split(' ')[0].toLowerCase();
+      const followUp = userText.substring(actionPart.length).trim();
 
       // --- 🛠️ PATTERN DEFINITIONS ---
       const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched', 'imdbid'];
@@ -3754,6 +3754,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              }
           }
         }
+
+        // 🛡️ NOISE SCRUBBER: Strip filler words from titles (e.g., "show me severence" -> "severence")
+        finalTitle = finalTitle.replace(/^(me|the|for|details for|it|this|that)\s+/i, '').trim();
 
         // 🛡️ HIJACK GUARD: If conversational, bypass local resolution
         if (isConversational) {
