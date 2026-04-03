@@ -1298,6 +1298,31 @@
     // ============================================================
     // LOGIC ENGINE & HISTORY
     // ============================================================
+    // GLOBAL CONSTANTS & HELPERS (Protection Suite)
+    // ============================================================
+    const FIELD_LABELS = {
+      'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
+      'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
+      'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID',
+      'date_watched': 'Last Watched', 'seasons': 'Seasons'
+    };
+    const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'primary_genre', 'subgenres', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'imdbid', 'date_watched'];
+    const STATUS_BUCKETS = ['Watching', 'Watchlist', 'Watched', 'Abandoned', 'Dropped', 'To Watch', 'Queue'];
+    const ALIASES = { 'date': 'date_watched', 'last watched': 'date_watched', 'last_watched': 'date_watched', 'genre': 'primary_genre', 'genres': 'subgenres', 'note': 'notes', 'season': 'progress' };
+
+    function titleCaseList(str) {
+      if (!str) return "none";
+      return String(str).split(',').map(s => s.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')).join(', ');
+    }
+    function isAffirmative(s) { 
+      const low = String(s).toLowerCase().trim();
+      return ['yes', 'yeah', 'yep', 'yup', 'correct', 'sure', 'ok', 'okay', 'y'].includes(low) || low.startsWith('yes');
+    }
+    function isNegative(s) { 
+      const low = String(s).toLowerCase().trim();
+      return ['no', 'nope', 'nah', 'not', 'cancel', 'n'].includes(low) || low.startsWith('no');
+    }
+
     function saveHistoryState() {
       // Limit history to last 20 states
       if (historyStack.length >= 20) historyStack.shift();
@@ -1327,13 +1352,6 @@
              fields.forEach(f => {
                 if (String(currItem[f] || 'none').toLowerCase() !== String(restItem[f] || 'none').toLowerCase()) {
                   const oldV = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : String(currItem[f]);
-                  const newV = (restItem[f] === undefined || restItem[f] || '').trim() === '' ? 'none' : String(restItem[f]);
-                  const FIELD_LABELS = { 
-                    'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 
-                    'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 
-                    'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'seasons': 'Seasons',
-                    'date_watched': 'Last Watched'
-                  };
                   const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
                   changes.push(`**${currItem.title}** ${fLabel}: "${oldV}" \u2192 "**${newV}**"`);
                 }
@@ -2315,14 +2333,26 @@
     }
 
     function resolveLibraryTitle(title) {
-      const exact = findByTitle(title);
-      if (exact) {
-        return { item: exact, exact: true, fuzzy: false };
+      if (!title) return { item: null, exact: false, fuzzy: false };
+      
+      let searchTitle = title.trim();
+      let detectedSuffix = "";
+
+      // 🛡️ Suffix Scrubber (e.g., "severance s2" -> "severance")
+      const suffixMatch = searchTitle.match(/^([\s\S]+?)\s+((?:S|Season)\s*(\d+)(?:\s*(?:E|e)\s*\d+)?)$/i);
+      if (suffixMatch) {
+         searchTitle = suffixMatch[1].trim();
+         detectedSuffix = suffixMatch[2].trim();
       }
 
-      const fuzzy = findByTitleFuzzy(title);
+      const exact = findByTitle(searchTitle);
+      if (exact) {
+        return { item: exact, exact: true, fuzzy: false, suffixContext: detectedSuffix };
+      }
+
+      const fuzzy = findByTitleFuzzy(searchTitle);
       if (fuzzy) {
-        return { item: fuzzy, exact: false, fuzzy: true };
+        return { item: fuzzy, exact: false, fuzzy: true, suffixContext: detectedSuffix };
       }
 
       return { item: null, exact: false, fuzzy: false };
@@ -2479,19 +2509,23 @@
            return;
         }
 
+        // 🛡️ SEARCH SCRUBBER (Fix 1)
+        // Strip S# or Season # from the TMDb query to prevent Zero Results.
+        const scrubbedQuery = query.replace(/\s+(?:S|Season)\s*\d+(?:\s*(?:E|e)\s*\d+)?.*$/i, '').trim();
+        console.log(`🔍 Search Engine: Scrubbing query "${query}" -> "${scrubbedQuery}"`);
+        
         const key = getTMDbKey();
         if (!key) return;
         
         addTyping();
         try {
           // 🧠 THE BRAIN: AI-Powered Typo Resolver (Parallel to TMDb)
-          // Fires off an AI correction in the background while TMDb results are still fetching.
-          const typoPromise = resolveTypoAI(query);
+          const typoPromise = resolveTypoAI(scrubbedQuery);
 
           // 🛡️ THE ENGINE: Multi-Pass Parallel Search
-          const multiPromise = fetchTMDbData(query, 'multi');
-          const tvPromise = fetchTMDbData(query, 'tv');
-          const moviePromise = fetchTMDbData(query, 'movie');
+          const multiPromise = fetchTMDbData(scrubbedQuery, 'multi');
+          const tvPromise = fetchTMDbData(scrubbedQuery, 'tv');
+          const moviePromise = fetchTMDbData(scrubbedQuery, 'movie');
 
           const [aiCorrection, multiRes, tvRes, movieRes] = await Promise.all([
             typoPromise,
@@ -2507,13 +2541,10 @@
             ...(movieRes?.results || []).map(r => ({ ...r, media_type: 'movie' }))
           ];
 
-          // If AI fixed the typo, run an additional high-fidelity search for that title
-          if (aiCorrection && aiCorrection.toLowerCase() !== query.toLowerCase()) {
-              console.log(`🧠 AI Brain: Correcting "${query}" to "${aiCorrection}"...`);
+          if (aiCorrection && aiCorrection.toLowerCase() !== scrubbedQuery.toLowerCase()) {
+              console.log(`🧠 AI Brain: Correcting "${scrubbedQuery}" to "${aiCorrection}"...`);
               const correctionResults = await fetchTMDbData(aiCorrection, 'multi');
-              if (correctionResults?.results) {
-                  allRaw = [...allRaw, ...correctionResults.results];
-              }
+              if (correctionResults?.results) allRaw = [...allRaw, ...correctionResults.results];
           }
 
           const seen = new Set();
@@ -2555,10 +2586,10 @@
 
               pendingSelection = { results: bestFive, statusHint: statusHint }; 
               const options = bestFive.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
-              const headerTitle = query.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              const headerTitle = scrubbedQuery.split(' ').map(w => (w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).join(' ');
               addMsg('assistant', `Found matches for **${headerTitle}**:\n\n${options}\n\nPick a number.`);
           } else {
-              addMsg('assistant', `ℹ️ No results found for **${query}**.`);
+              addMsg('assistant', `ℹ️ No results found for **${scrubbedQuery}**.`);
           }
         } finally {
           removeTyping();
@@ -2718,6 +2749,41 @@
       return item;
     }
 
+    // ============================================================
+    // UNIVERSAL METADATA SYNC (TMDb Priority)
+    // ============================================================
+    async function syncSeasonMetadata(item) {
+      if (!item || item.format === 'Movie') return;
+      
+      addTyping();
+      try {
+        const tmdb = await fetchTMDbData(item.title);
+        const results = tmdb?.results || [];
+        let details = results.find(r => (item.format === 'Series' || item.format === 'Miniseries') ? r.first_air_date : r.release_date);
+        if (!details && results.length > 0) details = results[0];
+
+        if (details && details.id) {
+          const type = (item.format === 'Series' || item.format === 'Miniseries') ? 'tv' : 'movie';
+          const full = await fetchTMDbFullDetails(details.id, type);
+          
+          if (type === 'tv' && full.seasons) {
+            const today = new Date();
+            const airedSeasons = full.seasons.filter(s => {
+              if (!s.air_date) return false;
+              return new Date(s.air_date) <= today;
+            });
+
+            if (airedSeasons.length > 0) {
+              const lastSeason = airedSeasons[airedSeasons.length - 1];
+              item.progress = `Season ${lastSeason.season_number} (${lastSeason.episode_count}/${lastSeason.episode_count})`;
+              item.seasons = airedSeasons.length;
+              console.log(`🛡️ Air-Date Guard: Locked to Season ${lastSeason.season_number} (Aired: ${lastSeason.air_date})`);
+            }
+          }
+        }
+      } catch (e) { console.warn("Metadata sync failed:", e); } finally { removeTyping(); }
+    }
+
     async function normalizeProgressValue(item, newVal) {
       if (!newVal || typeof newVal !== 'string') return newVal;
 
@@ -2825,8 +2891,8 @@ Your goal is to provide direct, professional assistance for library management a
 
 ### 2. CORE ROLE: THE TRANSLATOR
 - Translate natural language into a JSON update block.
-- **GROUND TRUTH RULE**: The "LIBRARY CONTEXT" (Watching, Watchlist, etc.) provided in the user message is the ABSOLUTE current state. **Trust it above your own memory or conversation history.**
-- **HYGIENE RULE**: If a title is NOT in the provided "LIBRARY CONTEXT" lists, it is NOT in the library. 
+- **GROUND TRUTH RULE**: The "LIBRARY CONTEXT" (Watching, Watchlist, etc.) provided in the user message is the ABSOLUTE current state. The "ALL TITLES" index is the master list of everything the user already owns. 
+- **HYGIENE RULE**: If a title is in "ALL TITLES," it is in the library—even if it's not in the status snapshots. You MUST use action: "update" for these, NOT "add" or "search."
 - **NO GATEKEEPING**: If the user says "add", "move", "remove", or "update", DO NOT ask "Would you like me to?". Provide the JSON block to execute the command immediately.
 - **DISCOVERY (Search) RULE**: If the user asks to "add" a title not currently in the library, you MUST provide a JSON block with action: 'search' and the corrected title immediately. DO NOT ASK PERMISSION.
 - **TYPO RESOLUTION**: If a user's "add" command has a likely typo (e.g. "severence"), first correct it to the "Ground Truth" spelling (e.g. "Severance") and then immediately output the action: 'search' block.
@@ -3401,32 +3467,15 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year, imdbid };
     }
 
-    async function sendMessage(userText, skipUserBubble = false, confirmOverride = '', isPivotRecursion = false) {
-      if (!userText || !userText.trim()) return;
-      const reply = userText.trim().toLowerCase();
-      
-      // 🛡️ Helper: Convert natural time to real date
-      function formatRelativeDate(str) {
-         if (!str) return 'unknown';
-         const l = str.toLowerCase();
-         const d = new Date();
-         if (l.includes('yesterday')) d.setDate(d.getDate() - 1);
-         else if (l.includes('today')) d.setDate(d.getDate());
-         return d.toISOString().split('T')[0]; // YYYY-MM-DD
-      }
-      
-      // 🛡️ v18.5: Absolute Visibility
-      if (!skipUserBubble) addMsg('user', userText);
+    // ============================================================
+    // MAIN COMMAND ENGINE (sendMessage)
+    // ============================================================
+    async function sendMessage(userText, isPivotRecursion = false, pivotHint = "", isFromPicker = false) {
+      if (!isPivotRecursion) addMsg('user', userText);
 
-      // --- 🛠️ SMART PIVOT EXTRACTION (Universal) ---
-      const lowerText = userText.toLowerCase().trim();
-      const butIndex = lowerText.indexOf(" but ");
-      let actionPart = lowerText;
-      let followUp = "";
-      if (butIndex !== -1) {
-        actionPart = lowerText.substring(0, butIndex).trim();
-        followUp = userText.substring(butIndex + 5).trim();
-      }
+      const reply = userText.trim().toLowerCase();
+      const actionPartBase = userText.split(' ')[0].toLowerCase();
+      const followUpBase = userText.substring(actionPartBase.length).trim();
 
       // --- 🛠️ PATTERN DEFINITIONS ---
       const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched', 'imdbid'];
@@ -3516,6 +3565,63 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         return;
       }
 
+      // --- 🛡️ PHASE 1: LOCAL MAINTENANCE INTERCEPTOR (Win First) ---
+      // v18.52: Prioritize direct library maintenance (Title = Val) over AI.
+      const directMatch = userText.match(/^(?:mark|move|update)\s+(.+?)\s+(?:as|to|status|platform|progress)\s+(.+)$/i) || userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
+      
+      if (directMatch && !pendingAIConfirmation && !pendingUpdate && !pendingPlatformConfirmation) {
+        let rawSearch = directMatch[1].trim();
+        let mVal = directMatch[2].trim();
+        let mField = "";
+
+        const match = resolveLibraryTitle(rawSearch);
+        if (match.item) {
+           const targetItem = match.item;
+           const vLow = mVal.toLowerCase();
+           
+           // Detect field if not explicitly stated
+           if (/^(watching|watched|watchlist|abandoned)$/i.test(vLow)) mField = "status";
+           else if (/^(movie|series|miniseries)$/i.test(vLow)) mField = "format";
+           else if (/^(season|s)\s*\d+/.test(vLow)) mField = "progress";
+           
+           if (mField || match.suffixContext) {
+              if (match.suffixContext && !mField) mField = "progress"; // Default suffix to progress
+
+              saveHistoryState();
+              const oldVal = targetItem[mField] || 'none';
+              
+              if (mField === 'progress') {
+                const combinedVal = match.suffixContext ? `${match.suffixContext} ${mVal}` : mVal;
+                addTyping();
+                targetItem[mField] = await normalizeProgressValue(targetItem, combinedVal);
+                removeTyping();
+              } else {
+                targetItem[mField] = mVal;
+              }
+
+              sanitizeItem(targetItem, mField === 'status');
+              
+              // Deep-Fill Implementation (Sync metadata if marking complete)
+              const isComplete = vLow === 'watched' || vLow === 'complete' || vLow === 'done' || vLow === 'finished';
+              if (mField === 'status' && isComplete) {
+                 await syncSeasonMetadata(targetItem);
+              }
+
+              saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+              
+              const reportText = generateExecutionReport({ 
+                updatedDetails: [{ 
+                  title: targetItem.title, 
+                  changes: [{ field: mField, oldVal: oldVal, newVal: targetItem[mField] }] 
+                }] 
+              });
+              addMsg('assistant', reportText);
+              lastDiscussedTitle = targetItem.title;
+              return; // 🏆 ACTION-FIRST SUCCESS
+           }
+        }
+      }
+
 
       // --- 🛡️ 5b: INSTANT CONTEXT HARVEST (Memory Lock) ---
       // Scan all user messages for library titles before handing off to AI.
@@ -3560,37 +3666,6 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // PASS 1: Assignment Match (High Priority)
       // Matches "Title = Value" or "Title: Value"
-      const eqMatch = userText.match(/^(.+?)\s*[=:]\s*(.*)$/i);
-      if (eqMatch) {
-         let potentialTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
-         let potentialVal = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
-         
-         // 🛡️ 5b: Implicit Title Context (Memory Lock)
-         const tLow = potentialTitle.toLowerCase();
-         if (VALID_FIELDS.includes(tLow) && lastDiscussedTitle) {
-            console.log(`🎯 Implicit Title Lock: ${tLow} -> ${lastDiscussedTitle}`);
-            rawTitle = lastDiscussedTitle;
-            field = tLow;
-            val = potentialVal;
-         } else {
-            const vLow = potentialVal.toLowerCase();
-            const isField = VALID_FIELDS.includes(vLow);
-            const isStatus = /^(watching|watched|watchlist|abandoned|dropped|to watch|queue|complete|completed|finished|done|finish|complet|don)/i.test(vLow);
-            const isPlatform = /(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow);
-            
-            if (isField || isStatus || isPlatform) {
-               rawTitle = potentialTitle;
-               val = potentialVal;
-               const words = rawTitle.split(/\s+/);
-               const last = words[words.length-1].toLowerCase();
-               if (VALID_FIELDS.includes(last)) {
-                  field = last;
-                  words.pop();
-                  rawTitle = words.join(' ');
-               }
-            }
-         }
-      } 
       
       // PASS 1.5: Natural Assignment Match (no = needed)
       const nWords = userText.toLowerCase().split(/\s+/);
@@ -3700,27 +3775,16 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
            }
         }
 
-          // --- CASE 1: ADDING (Gold Standard Consolidation) ---
-          if (verb === 'add' || (!verb && !targetItem && val)) {
-             if (targetItem) {
-                // 🛡️ SMART PIVOT (A1/A2): If title exists, transition to UPDATE intent if field/val present.
-                if (field || val) {
-                   verb = 'update';
-                   // Fall-through to update logic below
-                } else {
-                   addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
-                   lastDiscussedTitle = targetItem.title;
-                   return;
-                }
-             } else {
-                const searchTitle = finalTitle || rawTitle;
-                if (searchTitle) {
-                   console.log(`🚀 Logic Engine: Intercepted ADD for "${searchTitle}"`);
-                   await triggerDiscoverySearch(searchTitle, val || verb || 'Watchlist');
-                   return;
-                }
-             }
+      // --- CASE 1: ADDING (Strict Keyword Enforcement) ---
+      // Restricted to explicit "add" keyword per user request.
+      if (verb === 'add') {
+          const searchTitle = finalTitle || rawTitle;
+          if (searchTitle) {
+             console.log(`🚀 Logic Engine: Intercepted ADD for "${searchTitle}"`);
+             await triggerDiscoverySearch(searchTitle, val || 'Watchlist');
+             return;
           }
+      }
           // --- CASE 2: DELETING / CLEARING ---
           else if (verb === 'delete' || verb === 'remove' || verb === 'clear') {
             if (targetItem) {
@@ -3759,21 +3823,18 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
               }
             }
           }
-          // 🛡️ 5b: Context Fallback - If no title found but we have a verb/val, target the last discussed item
-          if (!targetItem && (verb || val) && lastDiscussedTitle) {
-             targetItem = findByTitle(lastDiscussedTitle);
-             if (targetItem) console.log(`🎯 Context Lock: Targeting last discussed title: ${targetItem.title}`);
-          }
-
-          // --- CASE 3: UPDATING (Unified Command Engine) ---
+          // --- CASE 3: UPDATING / MAINTAINING ---
           else if (targetItem && (verb || val)) {
-             let finalField = field;
-             let finalVal = val;
-             const statuses = ['watching', 'watchlist', 'watched', 'abandoned', 'dropped'];
+             if (!targetItem && lastDiscussedTitle) {
+                targetItem = findByTitle(lastDiscussedTitle);
+                if (targetItem) console.log(`🎯 Context Lock: Targeting last discussed title: ${targetItem.title}`);
+             }
+
+             const statuses = STATUS_BUCKETS.map(s => s.toLowerCase());
              const changed = [];
              const snapshot = JSON.parse(JSON.stringify(targetItem));
 
-             if (val && statuses.some(s => val.toLowerCase().includes(s))) {
+             if (mVal && statuses.some(s => mVal.toLowerCase().includes(s))) {
                 const targetStatus = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
                 if (targetItem.status !== targetStatus) {
                    targetItem.status = finalVal;
@@ -3888,17 +3949,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 saveLibrary(); updateStats(); refreshSearch(); renderWatching();
                 
                 const newVal = targetItem[actualField] || 'none';
-                
-                // FIELD LABELS
-                const FIELD_LABELS = {
-                  'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
-                  'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
-                  'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID',
-                  'date_watched': 'Last Watched'
-                };
-                const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
-                
-                let valDisplay = String(newVal);
+                let valDisplay = newVal;
                 if (['primary_genre', 'subgenres', 'tone'].includes(actualField)) valDisplay = titleCaseList(newVal);
 
                 const reportText = generateExecutionReport({ 
@@ -3912,7 +3963,6 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 return;
              }
           }
-        } 
 
       // A3: Scan userText for any library title that's explicitly mentioned
       // 🛡️ HIJACK GUARD: Don't hijack if the request is conversational discovery (Test 4b)
@@ -3995,148 +4045,6 @@ Output your answer conversationally.`;
         }
       }
 
-      // 📝 BROAD INTERCEPTOR: mark, move, update, =
-      const directMatch = userText.match(/^(?:mark|move|update)\s+(.+?)\s+(?:as|to|status|platform|progress)\s+(.+)$/i) || userText.match(/^(.+?)\s*[=:]\s*(.+)$/);
-      
-      if (directMatch && !pendingAIConfirmation && !pendingUpdate && !pendingPlatformConfirmation) {
-        let rawTitle = '';
-        let val = '';
-        let field = ''; // Start empty to detect ambiguity
-
-        if (directMatch[0].match(/^(mark|move|update)/i)) {
-          // Explicit Pattern: mark [title] as [val]
-          rawTitle = directMatch[1].trim();
-          val = directMatch[2].trim();
-          const vLow = val.toLowerCase();
-          // Auto-detect field
-          if (/^(watching|watched|watchlist|abandoned)$/i.test(vLow)) field = "status";
-          else if (/^(season|s)\s*\d+/.test(vLow)) field = "progress";
-          // If unrecognized (like a platform or note), it falls through to AI
-        } else {
-          // Assignment Pattern: [title] = [val]
-          rawTitle = directMatch[1].trim();
-          val = directMatch[2].trim();
-
-          // 🛡️ Suffix Snapping (Progress Context)
-          const snap = rawTitle.match(/^([\s\S]+?)\s+(S|Season)\s*(\d+)$/i);
-          if (snap) {
-            rawTitle = snap[1].trim();
-            const sNum = parseInt(snap[3]);
-            const vLow = val.toLowerCase();
-            const isComplete = vLow === 'watched' || vLow === 'complete' || vLow === 'done' || vLow === 'finished';
-            
-            if (isComplete) {
-              addTyping();
-              try {
-                const item = findByTitle(rawTitle) || findByTitleFuzzy(rawTitle);
-                if (item) {
-                  const tmdb = await fetchTMDbData(item.title);
-                  const showId = tmdb?.results?.[0]?.id;
-                  if (showId) {
-                    const seasonDetails = await fetchTMDbSeasonDetails(showId, sNum);
-                    const epCount = seasonDetails?.episodes?.length || 0;
-                    if (epCount > 0) {
-                      item.progress = `Season ${sNum} (${epCount}/${epCount})`;
-                      item.status = "Watching"; 
-                      saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                      const reportText = generateExecutionReport({ 
-                        updatedDetails: [{ 
-                          title: item.title, 
-                          changes: [
-                            { field: 'progress', oldVal: 'none', newVal: `Season ${sNum} (${epCount}/${epCount})` },
-                            { field: 'status', oldVal: item.status === 'Watching' ? 'none' : item.status, newVal: 'Watching' }
-                          ] 
-                        }] 
-                      });
-                      addMsg('assistant', reportText);
-                      lastDiscussedTitle = item.title;
-                      return;
-                    }
-                  }
-                }
-              } finally {
-                removeTyping();
-              }
-            }
-          }
-        }
-
-        const isFieldFirst = VALID_FIELDS.includes(rawTitle.toLowerCase());
-
-        let targetItem = null;
-        if (isFieldFirst && lastDiscussedTitle) {
-          targetItem = findByTitle(lastDiscussedTitle);
-          field = rawTitle.toLowerCase();
-        } else {
-          const match = resolveLibraryTitle(rawTitle);
-          if (match.item) {
-            targetItem = match.item;
-            const vLower = val.toLowerCase();
-            if (field === '') {
-               // 🛡️ AMBIGUITY RULE: Only intercept if the value matches a clear non-platform pattern
-               if (/^(watching|watched|watchlist|abandoned)$/i.test(vLower)) field = "status";
-               else if (/^(movie|series|miniseries)$/i.test(vLower)) field = "format";
-               else if (/^(season|s)\s*\d+/.test(vLower)) field = "progress";
-               else {
-                 // **FALL THROUGH TO AI**: Ambiguous or platform (e.g. "apple", "HBO")
-                 targetItem = null; 
-               }
-            }
-          }
-        }
-
-        if (targetItem && field !== '') {
-          saveHistoryState();
-          const oldVal = targetItem[field];
-          
-          if (field === 'progress') {
-            addTyping();
-            targetItem[field] = await normalizeProgressValue(targetItem, val);
-            removeTyping();
-          } else {
-            targetItem[field] = val;
-          }
-
-          sanitizeItem(targetItem, field === 'status');
-
-          // 🛡️ Deep-Fill Completion Sync (Whole Show)
-          const vLow = String(val).toLowerCase();
-          const isComplete = vLow === 'watched' || vLow === 'complete' || vLow === 'done' || vLow === 'finished';
-          if (field === 'status' && isComplete) {
-             addTyping();
-             try {
-                const tmdb = await fetchTMDbData(targetItem.title);
-                const details = tmdb?.results?.[0];
-                if (details && details.id) {
-                   const fullDetails = await fetchTMDbFullDetails(details.id, targetItem.format === 'Movie' ? 'movie' : 'tv');
-                   if (targetItem.format !== 'Movie' && fullDetails && (fullDetails.last_episode_to_air || fullDetails.seasons)) {
-                      const lastEp = fullDetails.last_episode_to_air;
-                      if (lastEp) {
-                         targetItem.progress = `Season ${lastEp.season_number} (${lastEp.episode_number}/${lastEp.episode_number})`;
-                      } else if (fullDetails.seasons && fullDetails.seasons.length > 0) {
-                         const lastS = fullDetails.seasons[fullDetails.seasons.length - 1];
-                         targetItem.progress = `Season ${lastS.season_number} (${lastS.episode_count}/${lastS.episode_count})`;
-                      }
-                   }
-                }
-             } finally {
-                removeTyping();
-             }
-          }
-
-          saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-
-          const reportText = generateExecutionReport({ 
-            updatedDetails: [{ 
-              title: targetItem.title, 
-              changes: [{ field: field, oldVal: oldVal || 'none', newVal: valDisplay }] 
-            }] 
-          });
-          addMsg('assistant', reportText);
-          lastDiscussedTitle = targetItem.title;
-          return;
-        }
-      }
 
       if (pendingSelection && pendingSelection.newItem) {
         if (affirmatives.includes(actionPart)) {
@@ -4772,6 +4680,7 @@ Output your answer conversationally.`;
         addMsg('assistant', afDisplay);
         return;
       }
+    }
 
       // C1. Master Conversational Fallback (AI handles everything else)
 
@@ -4787,7 +4696,7 @@ Output your answer conversationally.`;
           ? `\nCONTEXT: The user was last discussing "${lastDiscussedTitle}". If their message references a title implicitly (e.g. "update it", "update lifecycle and subgenres", "remove it"), apply the action to "${lastDiscussedTitle}".\n`
           : '';
         const libraryContext = buildLibraryContext(contextNote);
-        const userMsgWithContext = `${libraryContext}${confirmOverride}\n\n---\nUSER MESSAGE:\n${userText}`;
+        const userMsgWithContext = `${libraryContext}${pivotHint}\n\n---\nUSER MESSAGE:\n${userText}`;
 
         const messages = [
           { role: "system", content: SYSTEM_PROMPT },
@@ -4906,7 +4815,6 @@ Output your answer conversationally.`;
         }
 
         addMsg("ai", aiReply);
-
       } catch (e) {
         removeTyping();
         console.warn("Assistant AI failed:", e);
