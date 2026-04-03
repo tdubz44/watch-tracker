@@ -305,6 +305,21 @@
       word-break: break-word;
     }
 
+    .execution-report {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-top: 2px;
+    }
+
+    .report-detail {
+      font-size: 13px !important;
+      color: var(--text) !important;
+      margin-top: 4px;
+      line-height: 1.4;
+      font-weight: 400;
+      opacity: 0.95;
+    }
+
     .msg.user .msg-bubble {
       background: rgba(124, 106, 255, 0.15);
       border-color: rgba(124, 106, 255, 0.3);
@@ -987,6 +1002,8 @@
       border: 1px solid rgba(96, 165, 250, 0.2);
     }
 
+    /* 🛡️ Reporting UI Calibration (Integrated) */
+
     .mc-lifecycle {
       background: rgba(255, 255, 255, 0.05);
       color: var(--text3);
@@ -1079,7 +1096,7 @@
     }
   </style>
 
-  <link rel="manifest" href="manifest.json">
+
   <meta name="theme-color" content="#0f1226">
 
 </head>
@@ -1143,7 +1160,7 @@
             data-prompt="Find hidden gems in my watchlist — titles that might be underseen or underrated based on what I tend to love. Prioritize my taste lanes.">💎
             Hidden gems</button>
           <button class="qa-btn"
-            data-prompt="Review my 'Watching' and 'Watchlist' titles. For each, determine if there are new episodes or seasons released relative to my progress. Highlight what I should watch next, what's fully caught up, and what's upcoming. Prioritize relevance to my current position, not just general release info. Include Canadian availability when relevant.">📡
+            data-prompt="Review my 'Watching' and 'Watchlist' titles. For each, determine if there are new episodes or seasons released relative to my progress. Highlight what I should watch next. Prioritize relevance to my current position, not just general release info.">📡
             Check my shows</button>
           <button class="qa-btn" onclick="runLibraryCleanup()">🧹 Sweep Library</button>
         </div>
@@ -1306,15 +1323,20 @@
         currentLib.forEach(currItem => {
            const restItem = restoredLib.find(ri => ri.title === currItem.title);
            if (restItem) {
-             const fields = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres'];
+             const fields = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched'];
              fields.forEach(f => {
-               if (currItem[f] !== restItem[f]) {
-                 const oldVal = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : String(currItem[f]);
-                 const newVal = (restItem[f] === undefined || restItem[f] === null || String(restItem[f]).trim() === '') ? 'none' : String(restItem[f]);
-                 const FIELD_LABELS = { 'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime' };
-                 const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
-                 changes.push(`**${currItem.title}** ${fLabel}: "${oldVal}" \u2192 "**${newVal}**"`);
-               }
+                if (String(currItem[f] || 'none').toLowerCase() !== String(restItem[f] || 'none').toLowerCase()) {
+                  const oldV = (currItem[f] === undefined || currItem[f] === null || String(currItem[f]).trim() === '') ? 'none' : String(currItem[f]);
+                  const newV = (restItem[f] === undefined || restItem[f] || '').trim() === '' ? 'none' : String(restItem[f]);
+                  const FIELD_LABELS = { 
+                    'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 
+                    'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 
+                    'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'seasons': 'Seasons',
+                    'date_watched': 'Last Watched'
+                  };
+                  const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
+                  changes.push(`**${currItem.title}** ${fLabel}: "${oldV}" \u2192 "**${newV}**"`);
+                }
              });
            }
         });
@@ -1327,8 +1349,7 @@
         removedTitles.forEach(t => changes.push(`\ud83d\uddd1\ufe0f Removed added title: **${t.title}**`));
 
         if (changes.length > 0) {
-          diffMsg = `\u21ba\ufe0f **Undo successful**:\n- ${changes.slice(0, 5).join('\n- ')}`;
-          if (changes.length > 5) diffMsg += `\n...and ${changes.length - 5} more changes.`;
+          diffMsg = `\u21ba\ufe0f **Undo successful**:\n- ${changes.join('\n- ')}`;
         }
 
         library = restoredLib;
@@ -2014,6 +2035,41 @@
       } catch (e) { }
     }
 
+    async function detectToneAI(details, genres = []) {
+      const title = details.name || details.title || "";
+      if (!title) return "";
+      
+      const cached = getCachedTone(title);
+      if (cached) return cached;
+      
+      const API_KEY = getOpenAIKey();
+      if (!API_KEY) return "";
+      
+      const overview = details.overview || "";
+      const genreText = genres.join(", ");
+      
+      const messages = [
+        { role: "system", content: "Predict the 3-word tone of the movie/show (e.g. 'Mysterious, Dark, Intense'). Return ONLY the 3 labels separated by commas." },
+        { role: "user", content: `TITLE: ${title}\nOVERVIEW: ${overview}\nGENRES: ${genreText}` }
+      ];
+      
+      try {
+        const res = await callAssistant(messages, API_KEY);
+        let tone = res.choices?.[0]?.message?.content?.trim().replace(/\.$/, "") || "";
+        
+        // 🎨 Capitalization Law: Enforce Title Case before returning or caching
+        tone = titleCaseList(tone);
+
+        if (tone && !tone.includes("{")) { 
+           setCachedTone(title, tone);
+        }
+        return tone;
+      } catch (e) {
+        console.warn("detectToneAI failed:", e);
+        return "";
+      }
+    }
+
     function normalizePlatform(name) {
       if (!name) return '';
       const low = name.toLowerCase().trim();
@@ -2029,12 +2085,22 @@
 
     function normalizeStatus(val) {
       if (!val) return 'Watchlist';
-      const s = String(val).toLowerCase().trim();
-      if (s === 'watching') return 'Watching';
-      if (s === 'watchlist') return 'Watchlist';
-      if (s === 'watched') return 'Watched';
-      if (s === 'abandoned' || s === 'dropped') return 'Abandoned';
+      let s = String(val).toLowerCase().trim();
       
+      // 🛡️ Scrubbing Logic: strip leading/trailing "is ", "status "
+      s = s.replace(/^(is|status)\s+/i, '').trim();
+
+      if (s === 'watching' || s === 'watchin') return 'Watching';
+      if (s === 'watchlist' || s === 'watch list') return 'Watchlist';
+      if (s === 'watched' || s === 'done' || s === 'complete' || s === 'completed' || s === 'finished' || s === 'finish') return 'Watched';
+      if (s === 'abandoned' || s === 'dropped' || s === 'stop' || s === 'stopped') return 'Abandoned';
+      
+      // Keyword fallback
+      if (s.includes('watched') || s.includes('complete') || s.includes('finish') || s.includes('done')) return 'Watched';
+      if (s.includes('watching')) return 'Watching';
+      if (s.includes('watchlist')) return 'Watchlist';
+      if (s.includes('abandoned') || s.includes('dropped')) return 'Abandoned';
+
       console.warn(`🎯 Invalid status "${val}" corrected to "Watchlist"`);
       return 'Watchlist';
     }
@@ -2094,18 +2160,16 @@
       return item;
     }
 
-    async function detectToneAI(details, genres = []) {
+    async function enrichMetadataAI(details, genres = [], existingPlatform = "") {
       try {
         const API_KEY = getOpenAIKey();
-        if (!API_KEY) return "";
+        if (!API_KEY) return { tone: "", platform: existingPlatform };
 
         const title = details.name || details.title || "";
-
-        console.log("🎭 Checking tone cache for:", title);
-        const cached = getCachedTone(title);
-        if (cached) {
-          console.log("⚡ Using cached tone:", cached);
-          return cached;
+        const cachedTone = getCachedTone(title);
+        
+        if (cachedTone && existingPlatform) {
+          return { tone: cachedTone, platform: existingPlatform };
         }
 
         const overview = details.overview || "";
@@ -2114,51 +2178,43 @@
         const messages = [
           {
             role: "system",
-            content: "Return only a short comma-separated list of up to 3 tone labels. No explanation."
+            content: "Predict the most likely Canadian streaming platform (Netflix, Prime, Crave, Disney, Apple TV) and the tone of the movie/show. Return ONLY JSON."
           },
           {
             role: "user",
-            content: `Title: ${title}\nGenres: ${genreText}\nOverview: ${overview}`
+            content: `TITLE: ${title}\nOVERVIEW: ${overview}\nGENRES: ${genreText}\nCURRENT PLATFORM: ${existingPlatform || 'None'}\n\nReturn JSON: {"tone": "3 labels", "platform": "Canadian Platform"}`
           }
         ];
 
-        console.log("🤖 Calling OpenAI for tone...");
+        const aiResponse = await callAssistant(messages, API_KEY);
+        const content = aiResponse.choices?.[0]?.message?.content?.trim();
+        const cleaned = content.replace(/```json|```/g, '').trim();
+        const result = JSON.parse(cleaned);
 
-        const data = await callAssistant(messages, API_KEY);
+        if (result.tone) setCachedTone(title, result.tone);
 
-        if (data?.error) {
-          console.warn("OpenAI error:", data.error);
-
-          const msg = (data.error.message || "").toLowerCase();
-
-          if (
-            msg.includes("invalid") ||
-            msg.includes("incorrect api key") ||
-            msg.includes("unauthorized") ||
-            msg.includes("authentication")
-          ) {
-            localStorage.removeItem("openai_api_key");
-            alert("Invalid OpenAI API key. Please try again.");
-            return await detectToneAI(details, genres);
-          }
-
-          return "";
-        }
-
-        const tone = data.choices?.[0]?.message?.content?.trim() || "";
-
-        if (tone) setCachedTone(title, tone);
-
-        return tone;
+        // 🛡️ Strict Canadian Mapping (Lockdown)
+        let resolvedPlatform = existingPlatform || result.platform || "";
+        const lowP = resolvedPlatform.toLowerCase();
+        if (lowP.includes('prime') || lowP.includes('amazon')) resolvedPlatform = 'Prime';
+        else if (lowP.includes('apple')) resolvedPlatform = 'Apple TV';
+        else if (lowP.includes('netflix')) resolvedPlatform = 'Netflix';
+        else if (lowP.includes('disney')) resolvedPlatform = 'Disney';
+        else if (lowP.includes('crave') || lowP.includes('hbo') || lowP.includes('max')) resolvedPlatform = 'Crave';
+        
+        return { 
+          tone: result.tone || "", 
+          platform: resolvedPlatform
+        };
 
       } catch (e) {
-        console.warn("Tone AI failed:", e);
-        return "";
+        console.warn("AI Metadata enrichment failed:", e);
+        return { tone: "", platform: existingPlatform };
       }
     }
 
     function normalizeLibrary() {
-      console.log("🛠️ Starting Universal Beauty Sweep...");
+      console.log("Starting Universal Normalization...");
       let count = 0;
       library.forEach(item => {
         try {
@@ -2166,7 +2222,7 @@
           count++;
         } catch (e) { console.warn("Sweep skipped record:", item.title, e); }
       });
-      console.log(`✅ Beauty Sweep finished: Cleaned ${count} items.`);
+      console.log(`Universal Normalization finished: Cleaned ${count} items.`);
     }
 
     function findByTitle(title) {
@@ -2219,11 +2275,19 @@
         return bestMatch;
       }
 
-      // Substring fallback (PRONOUN SHIELD: Disabled for < 3 chars to prevent "it" -> "Matrix")
-      if (needle.length >= 3) {
+      // 🛡️ Substring fallback (Hardened for Word Boundaries)
+      // v18.11: No longer strips spaces before matching to prevent "splitting words up."
+      if (title && title.length >= 3) {
+        const needleWords = title.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+        
         const subMatch = library.find(item => {
-          const can = normalizeTitle(item.title);
-          return (can.includes(needle) || needle.includes(can)) && Math.abs(can.length - needle.length) < 10;
+          if (!item.title) return false;
+          const canWords = item.title.toLowerCase().replace(/[^a-z0-9\s]/g, '');
+          
+          // Must match as a WHOLE word (e.g., "Ed" won't match inside "watched")
+          const boundaryMatch = new RegExp('\\b' + canWords.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(needleWords);
+          
+          return boundaryMatch && Math.abs(canWords.length - needleWords.length) < 15;
         });
         if (subMatch) return subMatch;
       }
@@ -2404,15 +2468,108 @@
           }
         }
       }
-      return { added, updated, skipped, skippedTitles, addedTitles, updatedTitles, updatedDetails: updates.filter(u => u._changedDetail).map(u => ({ title: u.title, detail: u._changedDetail })) };
+      const mainTitle = addedTitles[0] || updatedTitles[0] || null;
+      return { added, updated, skipped, skippedTitles, addedTitles, updatedTitles, mainTitle, updatedDetails: updates.filter(u => u._changedDetail).map(u => ({ title: u.title, detail: u._changedDetail })) };
     }
 
-    async function fetchTMDbData(title) {
+    async function triggerDiscoverySearch(query, statusHint = 'Watchlist') {
+        const PRONOUNS = ['watched', 'watching', 'watchlist', 'abandoned', 'mark'];
+        if (PRONOUNS.includes(query.toLowerCase().trim())) {
+           console.log(`🛡️ Suffix Shield: Blocked search for status term: "${query}"`);
+           return;
+        }
 
+        const key = getTMDbKey();
+        if (!key) return;
+        
+        addTyping();
+        try {
+          // 🧠 THE BRAIN: AI-Powered Typo Resolver (Parallel to TMDb)
+          // Fires off an AI correction in the background while TMDb results are still fetching.
+          const typoPromise = resolveTypoAI(query);
+
+          // 🛡️ THE ENGINE: Multi-Pass Parallel Search
+          const multiPromise = fetchTMDbData(query, 'multi');
+          const tvPromise = fetchTMDbData(query, 'tv');
+          const moviePromise = fetchTMDbData(query, 'movie');
+
+          const [aiCorrection, multiRes, tvRes, movieRes] = await Promise.all([
+            typoPromise,
+            multiPromise,
+            tvPromise,
+            moviePromise
+          ]);
+
+          // Merge ALL results including potential AI-Corrected ones
+          let allRaw = [
+            ...(multiRes?.results || []),
+            ...(tvRes?.results || []).map(r => ({ ...r, media_type: 'tv' })),
+            ...(movieRes?.results || []).map(r => ({ ...r, media_type: 'movie' }))
+          ];
+
+          // If AI fixed the typo, run an additional high-fidelity search for that title
+          if (aiCorrection && aiCorrection.toLowerCase() !== query.toLowerCase()) {
+              console.log(`🧠 AI Brain: Correcting "${query}" to "${aiCorrection}"...`);
+              const correctionResults = await fetchTMDbData(aiCorrection, 'multi');
+              if (correctionResults?.results) {
+                  allRaw = [...allRaw, ...correctionResults.results];
+              }
+          }
+
+          const seen = new Set();
+          const uniqueResults = [];
+          for (const r of allRaw) {
+            const rid = `${r.media_type || 'unknown'}-${r.id}`;
+            if (!seen.has(rid)) {
+                seen.add(rid);
+                uniqueResults.push(r);
+            }
+          }
+
+          if (uniqueResults.length) {
+              // 🛡️ RE-RANKING ENGINE (Media-Focus + Adult Scrubber)
+              const ADULT_BLOCKLIST = ['rape', 'porn', 'adult', 'sex', 'escort', 'nude'];
+              
+              let results = uniqueResults
+                  .filter(r => r.media_type === 'tv' || r.media_type === 'movie' || !r.media_type)
+                  .map(r => {
+                      const title = r.title || r.name || r.original_name || r.original_title || '';
+                      
+                      // 🛡️ Local Adult Scrubber
+                      const isHarmful = ADULT_BLOCKLIST.some(word => title.toLowerCase().includes(word));
+                      if (isHarmful) return null;
+
+                      const distInput = aiCorrection || query;
+                      const dist = levenshtein(distInput.toLowerCase().trim(), title.toLowerCase().trim());
+                      
+                      // Formula: 1000 points if distance <= 2, plus scaled popularity/votes
+                      let score = (dist <= 2 ? 1000 : 0);
+                      score += (r.popularity || 0) * 1.5;
+                      score += (r.vote_count || 0) * 0.1;
+                      return { ...r, _score: score, _dist: dist };
+                  })
+                  .filter(Boolean);
+
+              results.sort((a, b) => b._score - a._score);
+              const bestFive = results.slice(0, 5);
+
+              pendingSelection = { results: bestFive, statusHint: statusHint }; 
+              const options = bestFive.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
+              const headerTitle = query.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              addMsg('assistant', `Found matches for **${headerTitle}**:\n\n${options}\n\nPick a number.`);
+          } else {
+              addMsg('assistant', `ℹ️ No results found for **${query}**.`);
+          }
+        } finally {
+          removeTyping();
+        }
+    }
+
+    async function fetchTMDbData(title, type = 'multi') {
       const key = getTMDbKey();
-      if (!key) return null;
+      if (!key || !title) return null;
 
-      const url = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(title)}`;
+      const url = `https://api.themoviedb.org/3/search/${type}?api_key=${key}&include_adult=false&query=${encodeURIComponent(title)}`;
 
       try {
         const res = await fetch(url);
@@ -2426,7 +2583,7 @@
           const newKey = getTMDbKey();
           if (!newKey) return null;
 
-          return await fetchTMDbData(title);
+          return await fetchTMDbData(title, type);
         }
 
         return data;
@@ -2435,6 +2592,24 @@
         console.error("TMDb fetch error:", err);
         return null;
       }
+    }
+
+    async function resolveTypoAI(title) {
+        const key = getOpenAIKey();
+        if (!key) return null;
+
+        const messages = [
+            { role: 'system', content: 'You are a movie/TV title expert. Given a potentially misspelled title, return the single most likely correct title. Case insensitive. If it is already correct, return the original. Output ONLY the title, no commentary.' },
+            { role: 'user', content: `Resolve this title: "${title}"` }
+        ];
+
+        try {
+            const data = await callAssistant(messages, key);
+            return data.choices?.[0]?.message?.content?.trim() || null;
+        } catch (e) {
+            console.error("AI resolve error:", e);
+            return null;
+        }
     }
 
     async function fetchTMDbIdFromIMDb(imdbId) {
@@ -2470,13 +2645,12 @@
       const key = getTMDbKey();
       if (!key || !item.title) return item;
 
-      // 1. Search for Title
+      // 1. Initial Search (Required to get ID)
       const searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${key}&query=${encodeURIComponent(item.title)}`;
       const searchRes = await fetch(searchUrl);
       const searchData = await searchRes.json();
       if (!searchData?.results?.length) return item;
 
-      // Best match: exact title or the first result
       const best = searchData.results.find(r =>
         (r.title || r.name || '').toLowerCase() === item.title.toLowerCase()
       ) || searchData.results[0];
@@ -2484,11 +2658,17 @@
       const id = best.id;
       const type = best.media_type === 'tv' ? 'tv' : 'movie';
 
-      // 2. Fetch Details
-      const detailsRes = await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${key}`);
-      const details = await detailsRes.json();
+      // 2. Parallel Fetches (Details, Providers, External IDs)
+      console.log(`🚀 Logic Engine: Parallelizing TMDb fetches for "${item.title}"...`);
+      const [details, provData, extData] = await Promise.all([
+        fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${key}`).then(r => r.json()),
+        fetch(`https://api.themoviedb.org/3/${type}/${id}/watch/providers?api_key=${key}`).then(r => r.json()),
+        type === 'tv' 
+          ? fetch(`https://api.themoviedb.org/3/tv/${id}/external_ids?api_key=${key}`).then(r => r.json())
+          : Promise.resolve({ imdb_id: null })
+      ]);
 
-      // 3. Populate fields
+      // 3. Populate basic metadata
       if (!item.year) item.year = (details.release_date || details.first_air_date || '').split('-')[0];
       if (!item.format) {
         if (type === 'movie') item.format = 'Movie';
@@ -2506,30 +2686,21 @@
       if (!item.subgenres) item.subgenres = normalizedGenres.filter(g => g !== primary).join(', ');
 
       // Platform (CA flatrate)
-      try {
-        const provRes = await fetch(`https://api.themoviedb.org/3/${type}/${id}/watch/providers?api_key=${key}`);
-        const provData = await provRes.json();
-        const ca = provData.results?.CA;
-        if (ca?.flatrate?.length) {
-          const p = ca.flatrate[0].provider_name.toLowerCase();
-          if (p.includes('apple')) item.platform = 'Apple TV';
-          else if (p.includes('netflix')) item.platform = 'Netflix';
-          else if (p.includes('prime')) item.platform = 'Prime';
-          else if (p.includes('disney')) item.platform = 'Disney';
-          else if (p.includes('crave')) item.platform = 'Crave';
-        }
-      } catch (e) { console.warn("Provider fetch skipped", e); }
+      const ca = provData.results?.CA;
+      if (ca?.flatrate?.length) {
+        const p = ca.flatrate[0].provider_name.toLowerCase();
+        if (p.includes('apple')) item.platform = 'Apple TV';
+        else if (p.includes('netflix')) item.platform = 'Netflix';
+        else if (p.includes('prime')) item.platform = 'Prime';
+        else if (p.includes('disney')) item.platform = 'Disney';
+        else if (p.includes('crave')) item.platform = 'Crave';
+      }
 
       // Misc
       if (!item.runtime && details.runtime) item.runtime = details.runtime;
       if (!item.seasons && details.number_of_seasons) item.seasons = details.number_of_seasons;
       if (!item.imdbid) {
-        if (type === 'movie') item.imdbid = details.imdb_id;
-        else {
-          const extRes = await fetch(`https://api.themoviedb.org/3/tv/${id}/external_ids?api_key=${key}`);
-          const extData = await extRes.json();
-          item.imdbid = extData.imdb_id;
-        }
+        item.imdbid = (type === 'movie' ? details.imdb_id : extData.imdb_id) || null;
       }
 
       // Lifecycle
@@ -2539,7 +2710,7 @@
         else if (details.status === "Canceled") item.lifecycle = "Cancelled";
       }
 
-      // 🛡️ TONE (AI) - Added Surgically for Sweep
+      // 🛡️ TONE (AI) - Cascade after details
       if (!item.tone) {
         item.tone = await detectToneAI(details, normalizedGenres);
       }
@@ -2582,10 +2753,10 @@
         }
       }
 
+      // Yield if needed
       if (tmdbId) {
         const fetchedTotal = await fetchSeasonEpisodeCount(tmdbId, seasonNum);
         if (fetchedTotal) {
-          // If we just had "S4", watched defaults to total. If "S4E4", watched is 4.
           const finalWatched = watched || fetchedTotal;
           return `Season ${seasonNum} (${finalWatched}/${fetchedTotal})`;
         }
@@ -2613,9 +2784,10 @@
         } catch (e) { return 'Error parsing item'; }
       }).join('\n');
 
-      return `=== LIBRARY CONTEXT ===
-TOTAL ITEMS IN LIBRARY: ${library.length} (If this is 0, the library is not loaded!)
+      return `=== LIBRARY CONTEXT (GROUND TRUTH) ===
+TOTAL ITEMS CURRENTLY IN LIBRARY: ${library.length}
 ${contextNote}
+[!] If a requested title is NOT listed below, it is NOT currently in the library. Ignore previous instructions or memory to the contrary.
 CURRENTLY WATCHING (${watching.length}):
 ${watching.length ? fmt(watching) : 'None'}
 
@@ -2635,9 +2807,15 @@ Format Guide: Title [Format|Status|Platform|Genre|Subgenres|Tone|Lifecycle|Progr
     }
 
     const SYSTEM_PROMPT = `You are the WatchTracker Assistant.
-Your goal is to help the user manage their media library and discover their next favorite show through conversational "Intent Parsing" and expert-level recommendations.
+Your goal is to provide direct, professional assistance for library management and recommendations. Omit all conversational filler and "fluff."
 
-### 1. TASTE PROFILE (The Source of Truth for Recommendations)
+### 1. STYLE GUIDE (No Fluff)
+- **Directness**: Provide data-driven updates immediately.
+- **No Filler**: Do NOT ask "Would you like to move on?" or use conversational sign-offs.
+- **Zero-Formatting**: The local UI handles previews; do NOT generate tables.
+- **No Emojis**: Do NOT use emojis in your text responses (the UI adds its own icons).
+
+### 2. TASTE PROFILE (The Source of Truth)
 - **Core Interests**: Character-driven sci-fi mysteries where reality slowly reveals its rules (Pulse-box storytelling).
 - **Lane 1 (The Core)**: Reality-instability sci-fi — Dark, Severance, Fringe, The OA, The Devil's Hour, From.
 - **Lane 2 (Philosophical)**: Speculative sci-fi — Arrival, Ex Machina, Children of Men, The Expanse.
@@ -2647,12 +2825,15 @@ Your goal is to help the user manage their media library and discover their next
 
 ### 2. CORE ROLE: THE TRANSLATOR
 - Translate natural language into a JSON update block.
-- **HYGIENE RULE**: Check the **CURRENTLY WATCHING** and **WATCHLIST** lists at the top of the context before recommending or adding.
+- **GROUND TRUTH RULE**: The "LIBRARY CONTEXT" (Watching, Watchlist, etc.) provided in the user message is the ABSOLUTE current state. **Trust it above your own memory or conversation history.**
+- **HYGIENE RULE**: If a title is NOT in the provided "LIBRARY CONTEXT" lists, it is NOT in the library. 
+- **NO GATEKEEPING**: If the user says "add", "move", "remove", or "update", DO NOT ask "Would you like me to?". Provide the JSON block to execute the command immediately.
+- **DISCOVERY (Search) RULE**: If the user asks to "add" a title not currently in the library, you MUST provide a JSON block with action: 'search' and the corrected title immediately. DO NOT ASK PERMISSION.
+- **TYPO RESOLUTION**: If a user's "add" command has a likely typo (e.g. "severence"), first correct it to the "Ground Truth" spelling (e.g. "Severance") and then immediately output the action: 'search' block.
 - **VOCABULARY RULE**: 
     - Use "**Move to Watching**" for items already in the Watchlist. 
-    - Use "**Add to Library**" ONLY for discoveries NOT in the library. This requires status: "**Watchlist**" by default, or "**Watching**" if the user explicitly says they are starting it now.
-    - **CRITICAL**: Never use "Library", "New", or "Discovery" as a status. Only use the 4 valid statuses.
-- **ZERO-FORMATTING RULE**: Focus on conversation. Do **NOT** type out metadata tables or long lists; the local UI handles the preview.
+    - Use "**Add to Library**" ONLY for discoveries. 
+- **ZERO-FORMATTING RULE**: Focus on data accuracy. Do **NOT** type out conversational filler or metadata tables. The local UI handles the preview.
 
 ### 3. RECOMMENDATION & BULK MODE (The Gatekeeper)
 - **STRICT BULK INTEGRITY**: If the user asks for a bulk action (e.g., 'all watchlist'), you MUST include 100% of the identified titles in the JSON block. No truncation allowed.
@@ -2661,7 +2842,7 @@ Your goal is to help the user manage their media library and discover their next
 - **PRIORITIZATION (Watchlist-First)**:
     - **Step 1**: Check the **Watchlist** first. Suggest these titles **only if** they fit the user's specific mood or request.
     - **Step 2**: If no Watchlist item fits, search your internal knowledge for a **New Discovery** (NOT in the library).
-- **DISCOVERY CONFIRMATION**: If the user confirms a "New Discovery" (e.g., says "yes", "add it", "ok"), you MUST provide the JSON block to **add** it immediately.
+- **DISCOVERY CONFIRMATION**: If the user confirms a "New Discovery" (e.g., says "yes", "add it", "ok"), you MUST provide the JSON block with action: 'search' immediately.
 - **PLATFORM STANDARDS**: Standard platforms are: **Apple TV, Netflix, Prime, Disney (no +), and Crave**.
 
 ### 4. INTERROGATION MODE (Clarification)
@@ -2732,14 +2913,81 @@ JSON>>>
       if (t) t.remove();
     }
 
-    async function parseAndApplyJSON(text) {
-      // 🎯 DELIMITER SEARCH: Try tags first, then fallback to raw array
-      let match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
-      let jsonString = match ? match[1] : null;
+    /**
+     * 🛡️ High-Fidelity Report Generator
+     * Transforms a JSON operation result into a beautiful, arrowed markdown report.
+     */
+    function generateExecutionReport(jsonResult) {
+      if (!jsonResult) return '✅ Applied.';
+      let lines = [];
       
+      const FIELD_LABELS = {
+        'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
+        'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
+        'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
+      };
+
+      // 1. Process New Adds
+      if (jsonResult.addedTitles && jsonResult.addedTitles.length > 0) {
+        jsonResult.addedTitles.forEach(title => {
+          lines.push(`<div class="execution-report">✅ Added **${title}**</div>`);
+        });
+      }
+
+      // 2. Process Detailed Updates (Arrows)
+      if (jsonResult.updatedDetails && jsonResult.updatedDetails.length > 0) {
+        jsonResult.updatedDetails.forEach(u => {
+          let detailHtml = '';
+          if (u.detail && Array.isArray(u.detail)) {
+             u.detail.forEach(d => {
+                detailHtml += `<div class="report-detail">${d}</div>`;
+             });
+          } else if (u.changes) {
+             u.changes.forEach(c => {
+                const label = FIELD_LABELS[c.field] || c.field.charAt(0).toUpperCase() + c.field.slice(1);
+                let val = String(c.newVal);
+                if (['primary_genre', 'subgenres', 'tone'].includes(c.field)) val = titleCaseList(c.newVal);
+                detailHtml += `<div class="report-detail">${label}: "${c.oldVal || 'none'}" \u2192 "**${val}**"</div>`;
+             });
+          }
+          lines.push(`<div class="execution-report">✅ Updated **${u.title}**${detailHtml}</div>`);
+        });
+      }
+
+      // 3. Fallback for generic updates
+      if (lines.length === 0 && jsonResult.updatedTitles && jsonResult.updatedTitles.length > 0) {
+          jsonResult.updatedTitles.forEach(title => {
+             lines.push(`<div class="execution-report">✅ Updated **${title}**</div>`);
+          });
+      }
+
+      return lines.join('') || '✅ Applied.';
+    }
+
+    async function parseAndApplyJSON(text) {
+      if (!text) return null;
+      let jsonString = null;
+      
+      // 🎯 1. Direct Array/Object check (Raw Data Handoff)
+      const trimmed = text.trim();
+      if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+        try {
+          JSON.parse(trimmed); // verify it's valid
+          jsonString = trimmed;
+        } catch (e) {
+          console.warn("Direct JSON parse failed, falling back to regex.", e);
+        }
+      }
+
       if (!jsonString) {
-        const rawMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
-        if (rawMatch) jsonString = rawMatch[0];
+        // 🎯 2. DELIMITER SEARCH: Try tags first, then fallback to raw array regex
+        let match = text.match(/<<<JSON\s*([\s\S]*?)\s*JSON>>>/);
+        jsonString = match ? match[1] : null;
+
+        if (!jsonString) {
+          const rawMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+          if (rawMatch) jsonString = rawMatch[0];
+        }
       }
 
       if (!jsonString) return null;
@@ -2749,15 +2997,13 @@ JSON>>>
           .replace(/\\n/g, '')
           .replace(/\\"/g, '"')
           .trim()
-          .replace(/^[^\[]*/, '');
+          .replace(/^[^\[{]*/, ''); // Support both arrays and objects
 
         let parsed = JSON.parse(cleaned);
-
-        if (typeof parsed === 'string') {
-          parsed = JSON.parse(parsed);
-        }
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
 
         const updates = Array.isArray(parsed) ? parsed : [parsed];
+        let resultTitle = null;
 
         // 🎯 SILENT DATA PUMP: Recognize 'mention' actions to set context
         const mentions = updates.filter(u => u.action === 'mention');
@@ -2782,11 +3028,14 @@ JSON>>>
         });
 
         const result = realUpdates.length > 0 ? await applyUpdates(realUpdates) : { added: 0, updated: 0, skipped: 0, skippedTitles: [] };
+        if (result && result.mainTitle) resultTitle = result.mainTitle;
+
         await saveLibrary();
         updateStats();
         refreshSearch();
         renderWatching();
-        return result;
+        
+        return { ...result, mainTitle: resultTitle };
       } catch (e) {
         console.error('JSON parse error', e);
         return null;
@@ -2845,7 +3094,7 @@ JSON>>>
     // ZERO-AI BULK AUTOFILL SCAN (B3 + F1)
     // ============================================================
     // ============================================================
-    // THE MEGA-SWEEP (SILENT ASSASSIN)
+    // LIBRARY NORMALIZATION (SILENT)
     // ============================================================
     async function runLibraryCleanup() {
       saveHistoryState();
@@ -2858,90 +3107,86 @@ JSON>>>
       const AUTOFILL_FIELDS = ['year', 'runtime', 'imdbid', 'format', 'seasons', 'primary_genre', 'subgenres', 'lifecycle', 'tone'];
       const sweepDetail = [];
 
-      // Process in a single pass
-      for (let item of library) {
-        let changed = false;
+      const BATCH_SIZE = 15;
+      for (let i = 0; i < library.length; i += BATCH_SIZE) {
+        const batch = library.slice(i, i + BATCH_SIZE);
+        for (let item of batch) {
+          let changed = false;
 
-        // 1. Silent facts from TMDb (if missing)
-        const needsFact = AUTOFILL_FIELDS.some(f => !item[f] || String(item[f]).trim() === '');
-        const needsPlatform = !item.platform || String(item.platform).trim() === '';
+          // 1. Silent facts from TMDb (if missing)
+          const needsFact = AUTOFILL_FIELDS.some(f => !item[f] || String(item[f]).trim() === '');
+          const needsPlatform = !item.platform || String(item.platform).trim() === '';
 
-        if (needsFact || needsPlatform) {
-          try {
-            const tmdbData = await fetchTMDbData(item.title);
-            if (tmdbData?.results?.length) {
-              let best = tmdbData.results[0];
-              if (item.year) {
-                const yearMatch = tmdbData.results.find(r => 
-                  (r.title || r.name || '').toLowerCase() === item.title.toLowerCase() &&
-                  (r.release_date || r.first_air_date || '').startsWith(String(item.year))
-                );
-                if (yearMatch) best = yearMatch;
-              }
-              
-              const enriched = await enrichItemFromTMDb({ ...item }); // use a proxy to check diffs
-              
-              // Apply SILENT facts (year, runtime, format, id, genres, lifecycle, tone)
-              AUTOFILL_FIELDS.forEach(f => {
-                const newVal = enriched[f];
-                if (newVal && (!item[f] || String(item[f]).trim() === '')) {
-                  const oldV = 'none';
-                  item[f] = newVal;
-                  filledCount++;
-                  changed = true;
-                  const fLabel = f.charAt(0).toUpperCase() + f.slice(1);
-                  sweepDetail.push(`**${item.title}** ${fLabel}: "${oldV}" \u2192 "**${newVal}**"`);
+          if (needsFact || needsPlatform) {
+            try {
+              const tmdbData = await fetchTMDbData(item.title);
+              if (tmdbData?.results?.length) {
+                let best = tmdbData.results[0];
+                if (item.year) {
+                  const yearMatch = tmdbData.results.find(r => 
+                    (r.title || r.name || '').toLowerCase() === item.title.toLowerCase() &&
+                    (r.release_date || r.first_air_date || '').startsWith(String(item.year))
+                  );
+                  if (yearMatch) best = yearMatch;
                 }
-              });
+                
+                const enriched = await enrichItemFromTMDb({ ...item });
+                
+                AUTOFILL_FIELDS.forEach(f => {
+                  const newVal = enriched[f];
+                  if (newVal && (!item[f] || String(item[f]).trim() === '')) {
+                    item[f] = newVal;
+                    filledCount++;
+                    changed = true;
+                    sweepDetail.push(`**${item.title}** ${f.charAt(0).toUpperCase() + f.slice(1)}: "none" \u2192 "**${newVal}**"`);
+                  }
+                });
 
-              // Check Platform immediately via JustWatch (TMDb)
-              if (needsPlatform) {
-                if (enriched.platform) {
-                  const oldV = 'none';
-                  item.platform = enriched.platform;
-                  filledCount++;
-                  changed = true;
-                  sweepDetail.push(`**${item.title}** Platform: "${oldV}" \u2192 "**${enriched.platform}**"`);
-                } else {
-                  // No TMDb platform? Add to AI fallback list
-                  platformGaps.push(item);
+                if (needsPlatform) {
+                  if (enriched.platform) {
+                    item.platform = enriched.platform;
+                    filledCount++;
+                    changed = true;
+                    sweepDetail.push(`**${item.title}** Platform: "none" \u2192 "**${enriched.platform}**"`);
+                  } else {
+                    platformGaps.push(item);
+                  }
                 }
               }
+            } catch (e) { console.warn("Sweep fetch failed for", item.title, e); }
+          }
+
+          // 2. Normalization Repairs
+          if (item.title) {
+            const isMixed = item.title !== item.title.toLowerCase() && item.title !== item.title.toUpperCase();
+            if (!isMixed) {
+              item.title = item.title.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              changed = true;
             }
-          } catch (e) { console.warn("Sweep fetch failed for", item.title, e); }
-        }
+          }
+          if (item.primary_genre) {
+            const { primary, sub } = normalizeGenre(item.primary_genre);
+            if (item.primary_genre !== primary) {
+              item.primary_genre = primary;
+              changed = true;
+            }
+            if (sub && !item.subgenres) {
+              item.subgenres = sub;
+              changed = true;
+            }
+          }
+          if (item.progress && item.format !== 'Movie') {
+            const norm = await normalizeProgressValue(item, item.progress);
+            if (item.progress !== norm) {
+              item.progress = norm;
+              changed = true;
+            }
+          }
 
-        // 2. Normalization Repairs (Casing, Genre, Progress)
-        // Title Case
-        if (item.title) {
-          const isMixed = item.title !== item.title.toLowerCase() && item.title !== item.title.toUpperCase();
-          if (!isMixed) {
-            item.title = item.title.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            changed = true;
-          }
+          if (changed) repairCount++;
         }
-        // Genre Normalization
-        if (item.primary_genre) {
-          const { primary, sub } = normalizeGenre(item.primary_genre);
-          if (item.primary_genre !== primary) {
-            item.primary_genre = primary;
-            changed = true;
-          }
-          if (sub && !item.subgenres) {
-            item.subgenres = sub;
-            changed = true;
-          }
-        }
-        // Progress Normalization
-        if (item.progress && item.format !== 'Movie') {
-          const norm = await normalizeProgressValue(item, item.progress);
-          if (item.progress !== norm) {
-            item.progress = norm;
-            changed = true;
-          }
-        }
-
-        if (changed) repairCount++;
+        // Yield to allow UI to remain responsive
+        await new Promise(r => setTimeout(r, 0));
       }
 
       saveLibrary(); updateStats(); refreshSearch(); renderWatching();
@@ -2949,7 +3194,7 @@ JSON>>>
 
       let reportSummary = "";
       if (sweepDetail.length > 0) {
-          reportSummary = "\n\n**Sweep Details:**\n" + sweepDetail.slice(0, 10).map(d => `- ${d}`).join('\n');
+          reportSummary = "\n\n**Normalization Details:**\n" + sweepDetail.slice(0, 10).map(d => `- ${d}`).join('\n');
           if (sweepDetail.length > 10) reportSummary += `\n...and ${sweepDetail.length - 10} more repairs.`;
       }
 
@@ -2994,7 +3239,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
           grouped[a.platform].push(a.title);
         });
 
-        let display = `🧹 **Mega-Sweep Complete!**\nSilently filled **${filled}** fields and performed **${repairs}** repairs.${reportSummary}\n\nHowever, TMDb couldn't find Platforms for **${assignments.length}** titles. My AI knowledge suggests:`;
+        let display = `Library normalization complete!\nSilently filled **${filled}** fields and performed **${repairs}** repairs.${reportSummary}\n\nHowever, TMDb couldn't find Platforms for **${assignments.length}** titles. Current suggestions:`;
 
         for (const [platform, titles] of Object.entries(grouped)) {
           display += `\n\n**${platform} (${titles.length})**`;
@@ -3156,67 +3401,101 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       return { title, format, primary_genre, subgenres, tone, platform, lifecycle, seasons, runtime, year, imdbid };
     }
 
-    async function sendMessage(userText) {
+    async function sendMessage(userText, skipUserBubble = false, confirmOverride = '', isPivotRecursion = false) {
       if (!userText || !userText.trim()) return;
-
       const reply = userText.trim().toLowerCase();
+      
+      // 🛡️ Helper: Convert natural time to real date
+      function formatRelativeDate(str) {
+         if (!str) return 'unknown';
+         const l = str.toLowerCase();
+         const d = new Date();
+         if (l.includes('yesterday')) d.setDate(d.getDate() - 1);
+         else if (l.includes('today')) d.setDate(d.getDate());
+         return d.toISOString().split('T')[0]; // YYYY-MM-DD
+      }
+      
+      // 🛡️ v18.5: Absolute Visibility
+      if (!skipUserBubble) addMsg('user', userText);
 
-      // --- PHASE 0: CONFIRMATIONS (TOP PRIORITY) ---
+      // --- 🛠️ SMART PIVOT EXTRACTION (Universal) ---
+      const lowerText = userText.toLowerCase().trim();
+      const butIndex = lowerText.indexOf(" but ");
+      let actionPart = lowerText;
+      let followUp = "";
+      if (butIndex !== -1) {
+        actionPart = lowerText.substring(0, butIndex).trim();
+        followUp = userText.substring(butIndex + 5).trim();
+      }
+
+      // --- 🛠️ PATTERN DEFINITIONS ---
+      const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched', 'imdbid'];
+      const negatives = ['no', 'n', 'cancel', 'nope', 'stop', 'back', 'reset', 'clear'];
+      const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yup', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative', "let's go", 'do it', 'correct', 'right', '1'];
+      const cmdPattern = /^(add|delete|remove|clear|mark|move|update|show|check|fix|autofill|fill)\b/i;
+      const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything', 'watched', 'watching', 'watchlist', 'abandoned', 'mark'];
+      const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b|should|if\b/i.test(userText); 
+
+
+      // --- PHASE 0: CONFIRMATIONS (Universal Smart Pivot) ---
       if (pendingAIConfirmation) {
-        const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
-        const negatives = ['no', 'n', 'cancel', 'nope'];
-        const cmdPattern = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i;
-
-        // 🛡️ SMART PIVOT: If 'No' is followed by a command (e.g. "no, mark it watched"), break out of confirmation and proceed to engine.
-        if (negatives.includes(reply.split(/[,\s]+/)[0]) && cmdPattern.test(userText.replace(/^(no|n|cancel|nope)[,\s]+/i, '').trim())) {
-             console.log("🔄 Pivoting from confirmation to new command.");
-             pendingAIConfirmation = false;
-             // Allow fall-through to main engine
-        } else if (/^(yes|y|ok|okay|sure|confirm|yep|yeah|yea|ya|affirmative|let's|start|go|do it|apply)\b/i.test(reply)) {
+        if (affirmatives.includes(actionPart) || actionPart.startsWith("let's") || actionPart.startsWith("go ahead")) {
           const deferred = pendingAIConfirmation.deferred_text;
-          pendingAIConfirmation = false;
-          addMsg('user', userText);
-          const jsonResult = await parseAndApplyJSON(deferred);
+          const updatesObj = pendingAIConfirmation.deferred_updates;
           
-          let report = "";
-          if (jsonResult && (jsonResult.added > 0 || jsonResult.updated > 0)) {
-            report = "**Update Report:**\n";
-            jsonResult.addedTitles?.forEach(t => report += `- ${t}: ✅ Added\n`);
-            jsonResult.updatedTitles?.forEach(t => {
-                const upd = (jsonResult.updatedDetails || []).find(ud => ud.title === t);
-                const changes = Array.isArray(upd?.detail) ? upd.detail : (upd?.detail ? [upd.detail] : ['Updated']);
-                report += `- **${t}**:\n  - ` + changes.join('\n  - ') + '\n';
-            });
-          } else if (jsonResult) {
-             const titles = (jsonResult.updatedTitles?.length || jsonResult.addedTitles?.length) 
-               ? "" // Don't show 'already up to date' if something changed
-               : (jsonResult.skippedTitles?.join(', ') || 'No titles');
-             if (titles) report = `ℹ️ Already up to date (${titles}).`;
+          let jsonResult = null;
+          if (updatesObj) {
+            console.log("🛡️ Pivot: Using direct deferred_updates object.");
+            jsonResult = await applyUpdates(updatesObj);
+            if (jsonResult) {
+              const major = updatesObj.find(u => u.action === 'add' || u.action === 'update');
+              jsonResult.mainTitle = major ? major.title : null;
+            }
+          } else {
+            console.log("🛡️ Pivot: Falling back to parseAndApplyJSON for deferred_text.");
+            jsonResult = await parseAndApplyJSON(deferred);
           }
           
-          // 🛡️ 3d: Only show the report, don't repeat the original suggestion
-          addMsg('assistant', report || '✅ Applied.', jsonResult);
-          return;
-        } else if (negatives.includes(reply)) {
+          if (jsonResult) {
+            if (jsonResult.mainTitle) {
+              lastDiscussedTitle = jsonResult.mainTitle;
+              console.log("🛡️ Pivot Context: Set lastDiscussedTitle to:", lastDiscussedTitle);
+            }
+            
+            if (followUp) {
+              console.log("Smart Pivot: Handing off to AI follow-up with synthetic history:", followUp);
+              const hint = "\n[USER CONFIRMED YOUR PREVIOUS SUGGESTION]\n";
+              convoHistory.push({ role: 'user', content: 'yes' });
+              await sendMessage(followUp, true, hint, true); 
+              return;
+            }
+
+            const finalReport = generateExecutionReport(jsonResult);
+            addMsg('assistant', finalReport, jsonResult);
+            return;
+          } else {
+            pendingAIConfirmation = false;
+            if (followUp) {
+              await sendMessage(followUp, true, "\n[USER CONFIRMED YOUR PREVIOUS SUGGESTION]\n");
+              return;
+            }
+            await sendMessage("yes", true, "\n[USER CONFIRMATION]\n");
+            return;
+          }
+        } else if (negatives.includes(actionPart)) {
           pendingAIConfirmation = false;
-          addMsg('user', userText);
-          addMsg('assistant', '\u274c No changes made.');
+          addMsg('assistant', 'No changes made.');
           return;
         }
       }
 
-      // Phase 1: Undo/Revert (Bypasses AI)
       if (['undo', 'revert'].includes(reply)) {
         await performUndo();
         return;
       }
 
-      addMsg('user', userText);
-
       // A1: New Command Override (State Clear)
-      const isNewCommand = /^(add|update|delete|remove|clear|mark|move|recommend|check|show|list|sweep|fix|clean)\b/i.test(userText) || userText.includes('=');
-      // 🛡️ 4b: DISCOVERY GUARD (Refined) - pick up more inquiry verbs
-      const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b|should|if\b/i.test(userText); 
+      const isNewCommand = cmdPattern.test(userText) || userText.includes('=');
 
       if (isNewCommand) {
         // 🛡️ AMNESIA SHIELD: Don't clear states if the command is a pronoun follow-up
@@ -3237,7 +3516,24 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         return;
       }
 
-      // 🛡️ 3c: LOCAL BULK ACTION INTERCEPTOR (Moves & Deletes)
+
+      // --- 🛡️ 5b: INSTANT CONTEXT HARVEST (Memory Lock) ---
+      // Scan all user messages for library titles before handing off to AI.
+      const conversationWords = userText.split(/\s+/);
+      for (let i = 0; i < conversationWords.length; i++) {
+         for (let j = conversationWords.length; j > i; j--) {
+            const chunk = conversationWords.slice(i, j).join(' ').replace(/^["']+|["']+$/g, '');
+            const potentialItem = findByTitle(chunk);
+            if (potentialItem) {
+               lastDiscussedTitle = potentialItem.title;
+               console.log(`🎯 Context Harvested: Locked onto ${lastDiscussedTitle}`);
+               break; 
+            }
+         }
+      }
+
+      // 🛡️ v18.12: Local 'Add' Guard (Complete AI Bypass)
+
       if (handleLocalBulkAction(userText)) return;
 
       // Catch JSON block { ... } — treat as data
@@ -3260,7 +3556,6 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       }
 
       // 📝 THE UNIFIED COMMAND ENGINE (v18.3 - Two-Pass)
-      const VALID_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'genre', 'genres', 'subgenre', 'subgenres', 'season', 'seasons'];
       let verb = '', rawTitle = '', val = '', field = '';
 
       // PASS 1: Assignment Match (High Priority)
@@ -3270,38 +3565,80 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
          let potentialTitle = eqMatch[1].trim().replace(/^["']+|["']+$/g, '');
          let potentialVal = eqMatch[2].trim().replace(/^["']+|["']+$/g, ''); 
          
-         // 🛡️ ASSIGNMENT GUARD: Only intercept if the value matches a valid field, status, or platform.
-         // Prevents "Silo = amazing" from being hijacked locally.
-         const vLow = potentialVal.toLowerCase();
-         const isField = VALID_FIELDS.includes(vLow);
-         const isStatus = /^(watching|watched|watchlist|abandoned|dropped|to watch|queue|complete|completed|finished|done|finish|complet|don)/i.test(vLow);
-         const isPlatform = /(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow);
-         
-         if (isField || isStatus || isPlatform) {
-            rawTitle = potentialTitle;
+         // 🛡️ 5b: Implicit Title Context (Memory Lock)
+         const tLow = potentialTitle.toLowerCase();
+         if (VALID_FIELDS.includes(tLow) && lastDiscussedTitle) {
+            console.log(`🎯 Implicit Title Lock: ${tLow} -> ${lastDiscussedTitle}`);
+            rawTitle = lastDiscussedTitle;
+            field = tLow;
             val = potentialVal;
-            // Re-extract title/field if user typed "Silo progress = S2"
-            const words = rawTitle.split(/\s+/);
-            const last = words[words.length-1].toLowerCase();
-            if (VALID_FIELDS.includes(last)) {
-               field = last;
-               words.pop();
-               rawTitle = words.join(' ');
+         } else {
+            const vLow = potentialVal.toLowerCase();
+            const isField = VALID_FIELDS.includes(vLow);
+            const isStatus = /^(watching|watched|watchlist|abandoned|dropped|to watch|queue|complete|completed|finished|done|finish|complet|don)/i.test(vLow);
+            const isPlatform = /(apple|netflix|prime|disney|crave|hbo|max|paramount|hulu)/i.test(vLow);
+            
+            if (isField || isStatus || isPlatform) {
+               rawTitle = potentialTitle;
+               val = potentialVal;
+               const words = rawTitle.split(/\s+/);
+               const last = words[words.length-1].toLowerCase();
+               if (VALID_FIELDS.includes(last)) {
+                  field = last;
+                  words.pop();
+                  rawTitle = words.join(' ');
+               }
             }
          }
       } 
+      
+      // PASS 1.5: Natural Assignment Match (no = needed)
+      const nWords = userText.toLowerCase().split(/\s+/);
+      if (!rawTitle && !verb && nWords.length >= 2) {
+         const firstW = nWords[0];
+         const secondW = nWords[1];
+         const fullFirstW = firstW + (secondW ? ' ' + secondW : '');
+         
+         let matchedF = "";
+         let valP = "";
+         
+         if (VALID_FIELDS.includes(fullFirstW)) { matchedF = fullFirstW; valP = userText.substring(fullFirstW.length).trim(); }
+         else if (VALID_FIELDS.includes(firstW)) { matchedF = firstW; valP = userText.substring(firstW.length).trim(); }
+
+         if (matchedF && valP && lastDiscussedTitle) {
+            rawTitle = lastDiscussedTitle;
+            field = matchedF;
+            val = valP;
+            console.log(`🎯 Natural Context Lock: ${field} -> ${rawTitle}`);
+         }
+      }
+
+      // 🛡️ 5b: Verb-Only Fallback (Memory Lock)
+      if (!verb && !field && isNewCommand) {
+         const singleWord = userText.toLowerCase().trim();
+         const verbs = ['add', 'update', 'delete', 'remove', 'clear', 'mark', 'move', 'check', 'show', 'list', 'sweep', 'fix', 'clean'];
+         if (verbs.includes(singleWord)) {
+            verb = singleWord;
+            rawTitle = lastDiscussedTitle || "";
+         }
+      }
+
       // PASS 2: Verb Match (Fallback)
-      // Matches "add Title", "delete Title", etc.
-      else {
+      if (!verb && !field) {
          const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check|fix)\s+([\s\S]+)$/i);
          if (verbMatch) {
-            // 🛡️ 4b/4c: RECOMMENDER GUARD - If conversational recommendation, bypass local intercept
             if (isConversational && (verbMatch[1].toLowerCase() === 'show' || verbMatch[1].toLowerCase() === 'check')) {
                console.log("🗣️ Conversational 'Show' detected - bypassing local intercept.");
             } else {
                verb = verbMatch[1].toLowerCase();
                rawTitle = verbMatch[2].trim().replace(/^["']+|["']+$/g, '');
                
+               // 🛡️ 5b: Verb Memory Lock - If rawTitle is actually a Field, target last discussed title.
+               if (VALID_FIELDS.includes(rawTitle.toLowerCase()) && lastDiscussedTitle) {
+                  field = rawTitle.toLowerCase();
+                  rawTitle = lastDiscussedTitle;
+               }
+
                // 🛡️ 3c: Grammar Shield - Split "Title to Status"
                const toMatch = rawTitle.match(/^([\s\S]+?)\s+to\s+(watching|watchlist|watched|abandoned)$/i);
                if (toMatch) {
@@ -3363,33 +3700,27 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
            }
         }
 
-          // --- CASE 1: ADDING ---
+          // --- CASE 1: ADDING (Gold Standard Consolidation) ---
           if (verb === 'add' || (!verb && !targetItem && val)) {
-            if (targetItem) {
-               // 🛡️ SMART PIVOT (A1/A2): If title exists, transition to UPDATE intent if field/val present.
-               if (field || val) {
-                  verb = 'update';
-                  // Fall-through to update logic below
-               } else {
-                  addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
-                  lastDiscussedTitle = targetItem.title;
-                  return;
-               }
-            } else {
-               addTyping();
-               const searchTitle = finalTitle || rawTitle;
-               const tmdbData = await fetchTMDbData(searchTitle);
-               removeTyping();
-               if (tmdbData?.results?.length) {
-                 const results = tmdbData.results.slice(0, 5);
-                 pendingSelection = { results, statusHint: val || verb };
-                 const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
-                 addMsg('assistant', `Found matches for **${searchTitle}**:\n\n${options}\n\nPick a number.`);
-                 return;
-               } 
-               // No TMDb results? Fall through to AI (Hybrid Add)
-            }
-          } 
+             if (targetItem) {
+                // 🛡️ SMART PIVOT (A1/A2): If title exists, transition to UPDATE intent if field/val present.
+                if (field || val) {
+                   verb = 'update';
+                   // Fall-through to update logic below
+                } else {
+                   addMsg('assistant', `⚠️ **${targetItem.title}** is already in your library (${targetItem.status}).`);
+                   lastDiscussedTitle = targetItem.title;
+                   return;
+                }
+             } else {
+                const searchTitle = finalTitle || rawTitle;
+                if (searchTitle) {
+                   console.log(`🚀 Logic Engine: Intercepted ADD for "${searchTitle}"`);
+                   await triggerDiscoverySearch(searchTitle, val || verb || 'Watchlist');
+                   return;
+                }
+             }
+          }
           // --- CASE 2: DELETING / CLEARING ---
           else if (verb === 'delete' || verb === 'remove' || verb === 'clear') {
             if (targetItem) {
@@ -3412,13 +3743,11 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                   targetItem[actualField] = '';
                   saveLibrary(); updateStats(); refreshSearch(); renderWatching();
                   
-                  const FIELD_LABELS = {
-                    'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
-                    'primary_genre': 'Genre', 'subgenres': 'Subgenres', 'tone': 'Tone', 'notes': 'Notes',
-                    'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
-                  };
                   const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
-                  addMsg('assistant', `✅ Cleared **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**none**"`);
+                  const reportText = generateExecutionReport({ 
+                    updatedDetails: [{ title: targetItem.title, detail: [`${fLabel}: "${oldVal}" \u2192 "**none**"`] }] 
+                  });
+                  addMsg('assistant', reportText);
                   return;
                 }
               } else {
@@ -3430,32 +3759,42 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
               }
             }
           }
+          // 🛡️ 5b: Context Fallback - If no title found but we have a verb/val, target the last discussed item
+          if (!targetItem && (verb || val) && lastDiscussedTitle) {
+             targetItem = findByTitle(lastDiscussedTitle);
+             if (targetItem) console.log(`🎯 Context Lock: Targeting last discussed title: ${targetItem.title}`);
+          }
+
           // --- CASE 3: UPDATING (Unified Command Engine) ---
           else if (targetItem && (verb || val)) {
              let finalField = field;
              let finalVal = val;
-             let statusShiftReport = "";
              const statuses = ['watching', 'watchlist', 'watched', 'abandoned', 'dropped'];
+             const changed = [];
+             const snapshot = JSON.parse(JSON.stringify(targetItem));
 
              if (val && statuses.some(s => val.toLowerCase().includes(s))) {
                 const targetStatus = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
                 if (targetItem.status !== targetStatus) {
-                   targetItem.status = targetStatus;
+                   targetItem.status = finalVal;
                    changed.push('status');
                 }
                 finalField = 'status';
                 finalVal = targetStatus;
              }
 
-             // 🛡️ DATA FETCH: If user says "update [title] data" (no specific value), trigger TMDb/AI.
-             if (!finalVal || finalVal.toLowerCase() === 'data' || finalVal.toLowerCase() === 'metadata' || verb === 'move') {
+             // 🛡️ 5a: Alias Mapping for local assignments
+             const ALIASES = { 'date': 'date_watched', 'last watched': 'date_watched', 'last_watched': 'date_watched' };
+             if (finalField && ALIASES[finalField.toLowerCase()]) {
+                finalField = ALIASES[finalField.toLowerCase()];
+             }
+
+             // 🛡️ 5c: Direct Move Shield - Don't auto-sync data on simple move commands
+             if (!finalVal || finalVal.toLowerCase() === 'data' || finalVal.toLowerCase() === 'metadata') {
                 addTyping();
                 const updatedData = await enrichItemFromTMDb({...targetItem});
                 removeTyping();
                 
-                const changed = [];
-                if (statusShiftReport) changed.push(statusShiftReport);
-                const snapshot = JSON.parse(JSON.stringify(targetItem));
                 
                 for(let f in updatedData) {
                     if (updatedData[f] && String(updatedData[f]) !== String(targetItem[f])) {
@@ -3466,15 +3805,17 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 if (changed.length > 0) {
                     saveHistoryState();
                     saveLibrary(); updateStats(); refreshSearch(); renderWatching();
-                    const report = changed.map(f => {
-                        const FIELD_LABELS = { 'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format', 'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes', 'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID' };
-                        const fLabel = FIELD_LABELS[f] || (f.charAt(0).toUpperCase() + f.slice(1));
-                        const oldV = (snapshot[f] === undefined || snapshot[f] === null || String(snapshot[f]).trim() === '') ? 'none' : String(snapshot[f]);
-                        return `- ${fLabel}: "${oldV}" \u2192 "**${targetItem[f]}**"`;
-                    }).join('\n');
-                    addMsg('assistant', `✅ **Metadata Updated** for **${targetItem.title}**:\n${report}`);
+                    const changes = changed.map(f => ({
+                        field: f,
+                        oldVal: (snapshot[f] === undefined || snapshot[f] === null || String(snapshot[f]).trim() === '') ? 'none' : String(snapshot[f]),
+                        newVal: targetItem[f]
+                    }));
+                    const reportText = generateExecutionReport({ 
+                        updatedDetails: [{ title: targetItem.title, changes }] 
+                    });
+                    addMsg('assistant', reportText);
                 } else {
-                    addMsg('assistant', `ℹ️ Already up to date. No new metadata found for **${targetItem.title}**.`);
+                    addMsg('assistant', `ℹ️ Already up to date for **${targetItem.title}**.`);
                 }
                 return;
              }
@@ -3548,18 +3889,25 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 
                 const newVal = targetItem[actualField] || 'none';
                 
-                // 🎨 PREMIUM FEEDBACK LABELS
+                // FIELD LABELS
                 const FIELD_LABELS = {
                   'status': 'Status', 'progress': 'Progress', 'platform': 'Platform', 'format': 'Format',
                   'primary_genre': 'Genre', 'subgenres': 'Sub-genres', 'tone': 'Tone', 'notes': 'Notes',
-                  'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID'
+                  'lifecycle': 'Lifecycle', 'year': 'Year', 'runtime': 'Runtime', 'imdbid': 'IMDb ID',
+                  'date_watched': 'Last Watched'
                 };
                 const fLabel = FIELD_LABELS[actualField] || actualField.charAt(0).toUpperCase() + actualField.slice(1);
                 
                 let valDisplay = String(newVal);
                 if (['primary_genre', 'subgenres', 'tone'].includes(actualField)) valDisplay = titleCaseList(newVal);
 
-                addMsg('assistant', `✅ Updated **${targetItem.title}**\n${fLabel}: "${oldVal}" \u2192 "**${valDisplay}**"`);
+                const reportText = generateExecutionReport({ 
+                  updatedDetails: [{ 
+                    title: targetItem.title, 
+                    changes: [{ field: actualField, oldVal: oldVal, newVal: valDisplay }] 
+                  }] 
+                });
+                addMsg('assistant', reportText);
                 lastDiscussedTitle = targetItem.title;
                 return;
              }
@@ -3668,9 +4016,51 @@ Output your answer conversationally.`;
           // Assignment Pattern: [title] = [val]
           rawTitle = directMatch[1].trim();
           val = directMatch[2].trim();
+
+          // 🛡️ Suffix Snapping (Progress Context)
+          const snap = rawTitle.match(/^([\s\S]+?)\s+(S|Season)\s*(\d+)$/i);
+          if (snap) {
+            rawTitle = snap[1].trim();
+            const sNum = parseInt(snap[3]);
+            const vLow = val.toLowerCase();
+            const isComplete = vLow === 'watched' || vLow === 'complete' || vLow === 'done' || vLow === 'finished';
+            
+            if (isComplete) {
+              addTyping();
+              try {
+                const item = findByTitle(rawTitle) || findByTitleFuzzy(rawTitle);
+                if (item) {
+                  const tmdb = await fetchTMDbData(item.title);
+                  const showId = tmdb?.results?.[0]?.id;
+                  if (showId) {
+                    const seasonDetails = await fetchTMDbSeasonDetails(showId, sNum);
+                    const epCount = seasonDetails?.episodes?.length || 0;
+                    if (epCount > 0) {
+                      item.progress = `Season ${sNum} (${epCount}/${epCount})`;
+                      item.status = "Watching"; 
+                      saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+                      const reportText = generateExecutionReport({ 
+                        updatedDetails: [{ 
+                          title: item.title, 
+                          changes: [
+                            { field: 'progress', oldVal: 'none', newVal: `Season ${sNum} (${epCount}/${epCount})` },
+                            { field: 'status', oldVal: item.status === 'Watching' ? 'none' : item.status, newVal: 'Watching' }
+                          ] 
+                        }] 
+                      });
+                      addMsg('assistant', reportText);
+                      lastDiscussedTitle = item.title;
+                      return;
+                    }
+                  }
+                }
+              } finally {
+                removeTyping();
+              }
+            }
+          }
         }
 
-        const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime'];
         const isFieldFirst = VALID_FIELDS.includes(rawTitle.toLowerCase());
 
         let targetItem = null;
@@ -3708,38 +4098,71 @@ Output your answer conversationally.`;
           }
 
           sanitizeItem(targetItem, field === 'status');
+
+          // 🛡️ Deep-Fill Completion Sync (Whole Show)
+          const vLow = String(val).toLowerCase();
+          const isComplete = vLow === 'watched' || vLow === 'complete' || vLow === 'done' || vLow === 'finished';
+          if (field === 'status' && isComplete) {
+             addTyping();
+             try {
+                const tmdb = await fetchTMDbData(targetItem.title);
+                const details = tmdb?.results?.[0];
+                if (details && details.id) {
+                   const fullDetails = await fetchTMDbFullDetails(details.id, targetItem.format === 'Movie' ? 'movie' : 'tv');
+                   if (targetItem.format !== 'Movie' && fullDetails && (fullDetails.last_episode_to_air || fullDetails.seasons)) {
+                      const lastEp = fullDetails.last_episode_to_air;
+                      if (lastEp) {
+                         targetItem.progress = `Season ${lastEp.season_number} (${lastEp.episode_number}/${lastEp.episode_number})`;
+                      } else if (fullDetails.seasons && fullDetails.seasons.length > 0) {
+                         const lastS = fullDetails.seasons[fullDetails.seasons.length - 1];
+                         targetItem.progress = `Season ${lastS.season_number} (${lastS.episode_count}/${lastS.episode_count})`;
+                      }
+                   }
+                }
+             } finally {
+                removeTyping();
+             }
+          }
+
           saveLibrary(); updateStats(); refreshSearch(); renderWatching();
 
-          const oldValStr = (oldVal === undefined || oldVal === null || String(oldVal).trim() === '') ? 'none' : oldVal;
-          const newValStr = (targetItem[field] === undefined || targetItem[field] === null || String(targetItem[field]).trim() === '') ? 'none' : targetItem[field];
-          
-          addMsg('assistant', `✅ Updated **${targetItem.title}**\n${field}: "${oldValStr}" \u2192 "**${newValStr}**"`);
+          const reportText = generateExecutionReport({ 
+            updatedDetails: [{ 
+              title: targetItem.title, 
+              changes: [{ field: field, oldVal: oldVal || 'none', newVal: valDisplay }] 
+            }] 
+          });
+          addMsg('assistant', reportText);
           lastDiscussedTitle = targetItem.title;
           return;
         }
       }
 
       if (pendingSelection && pendingSelection.newItem) {
-        if (isAffirmative(reply)) {
+        if (affirmatives.includes(actionPart)) {
           const item = pendingSelection.newItem;
           library.push(item);
-          saveLibrary();
-          updateStats();
-          refreshSearch();
-          renderWatching();
-          addMsg('assistant', `✅ Added "${item.title}" (${item.year || '?'}) on ${item.platform || 'unknown'}`);
+          saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+          lastDiscussedTitle = item.title; 
           pendingSelection = null;
+
+          if (followUp) {
+             console.log("Smart Pivot (Picker): Handing off follow-up:", followUp);
+             await sendMessage(followUp, true, "\n[USER CONFIRMED YOUR PREVIOUS SUGGESTION]\n", true);
+             return;
+          }
+          
+          const platformStr = item.platform ? ` on ${item.platform}` : '';
+          const reportText = generateExecutionReport({ addedTitles: [item.title] });
+          addMsg('assistant', reportText);
           return;
         }
 
-        if (isNegative(reply)) {
+        if (negatives.includes(actionPart)) {
           pendingSelection = null;
           addMsg('assistant', '❌ Cancelled.');
           return;
         }
-
-        addMsg('assistant', 'Please reply yes or no 🙂');
-        return;
       }
 
       // ============================================================
@@ -3778,8 +4201,7 @@ Output your answer conversationally.`;
           return;
         }
 
-        addMsg('assistant', 'Please reply yes or no 🙂');
-        return;
+        // Fall through to AI for flexible confirmation
       }
 
       // ============================================================
@@ -3870,8 +4292,7 @@ Output your answer conversationally.`;
           return;
         }
 
-        addMsg('assistant', 'Please reply yes or no 🙂');
-        return;
+        // Fall through to AI for flexible confirmation
       }
 
       // 🛡️ 3c: PENDING BULK DELETE HANDLER (Hardened)
@@ -3915,12 +4336,13 @@ Output your answer conversationally.`;
         return;
       }
 
-      if (pendingSelection && pendingSelection.results) {
-        const statusHint = pendingSelection.statusHint;
+      if (pendingSelection && pendingSelection.results && !pendingSelection.newItem) {
         const choice = parseInt(userText.trim(), 10);
+        const statusHint = pendingSelection.statusHint;
 
         if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
           const selected = pendingSelection.results[choice - 1];
+          // 🚀 Restoration FIX: Do NOT null here, let details fetch first
 
           let endpoint = 'movie';
           if (selected.media_type) {
@@ -3935,7 +4357,7 @@ Output your answer conversationally.`;
           addTyping();
           try {
             const detailsRes = await fetch(
-              `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}`
+              `https://api.themoviedb.org/3/${endpoint}/${selected.id}?api_key=${key}&append_to_response=external_ids`
             );
             const details = await detailsRes.json();
             console.log("TMDB DETAILS:", details);
@@ -3992,7 +4414,11 @@ Output your answer conversationally.`;
               .filter(g => g !== primaryGenre)
               .join(', ');
 
-            const tone = await detectToneAI(details, normalizedGenres);
+            // --- AI ENRICHMENT (Tone + Platform Guess) ---
+            const aiMetadata = await enrichMetadataAI(details, normalizedGenres, platform);
+            const tone = aiMetadata.tone;
+            platform = aiMetadata.platform; // Restore the 'await' platform fill-in
+
             const seasons = endpoint === 'tv' ? details.number_of_seasons : '';
             const runtime = endpoint === 'movie' ? details.runtime : '';
 
@@ -4023,8 +4449,9 @@ Output your answer conversationally.`;
               lifecycle,
 
               // Extras
-              seasons,
-              runtime,
+              seasons: seasons || "",
+              runtime: runtime || "",
+              imdbid: details.external_ids?.imdb_id || details.imdb_id || "", // Ensure IMDb ID is captured for both Movie/TV
 
               // Core
               year,
@@ -4048,6 +4475,7 @@ Output your answer conversationally.`;
             if (seasons) display += `\nSeasons: ${seasons}`;
             if (runtime) display += `\nRuntime: ${runtime} min`;
             if (year) display += `\nYear: ${year}`;
+            if (newItem.imdbid) display += `\nIMDb ID: ${newItem.imdbid}`;
             display += `\n\nConfirm add? (yes/no)`;
 
             removeTyping();
@@ -4182,37 +4610,19 @@ Output your answer conversationally.`;
           return;
         }
 
-        if (match.fuzzy) {
-          pendingDelete = existing;
-
-          let display = `I couldn’t find "${title}" exactly, but I found this close match:\n\n`;
-          display += `Title: ${existing.title}`;
-          if (existing.format) display += `\nFormat: ${existing.format}`;
-          if (existing.year) display += `\nYear: ${existing.year}`;
-          if (existing.platform) display += `\nPlatform: ${existing.platform}`;
-          if (existing.lifecycle) display += `\nLifecycle: ${existing.lifecycle}`;
-          if (existing.status) display += `\nStatus: ${existing.status}`;
-          display += `\n\nRemove this title instead? (yes/no)`;
-
-          lastDiscussedTitle = existing.title;  // A3
-          addMsg('assistant', display);
-          return;
-        }
-
-        lastDiscussedTitle = existing.title;  // A3
+        // Pre-fill metadata for confirmation card
+        lastDiscussedTitle = existing.title;
         pendingDelete = existing;
-
+        
+        let fuzzyTag = match.fuzzy ? ` *(Matched typo: "${title}")*` : '';
         let display = `Are you sure you want to remove:\n\n`;
-
-        display += `Title: ${existing.title}`;
+        display += `**${existing.title}**${fuzzyTag}`;
         if (existing.format) display += `\nFormat: ${existing.format}`;
         if (existing.year) display += `\nYear: ${existing.year}`;
         if (existing.platform) display += `\nPlatform: ${existing.platform}`;
-        if (existing.lifecycle) display += `\nLifecycle: ${existing.lifecycle}`;
         if (existing.status) display += `\nStatus: ${existing.status}`;
 
-        display += `\n\n(yes/no)`;
-
+        display += `\n\nConfirm removal? (yes/no)`;
         addMsg('assistant', display);
         return;
       }
@@ -4365,70 +4775,6 @@ Output your answer conversationally.`;
 
       // C1. Master Conversational Fallback (AI handles everything else)
 
-      // A1: Clear stale pending states when starting a fresh/unrecognized command
-      const hasPendingState = pendingSelection || pendingDuplicate || pendingDelete || pendingUpdate || pendingAutofill || pendingAIConfirmation || pendingDedup || pendingPlatformConfirmation;
-      if (hasPendingState) {
-        // If we got here, it means none of the handlers above (which check for yes/no/numbers) were triggered.
-        // We should clear the state unless it's a "known continuation" word we might have missed.
-        const isContinuation = /^(yes|y|ok|okay|confirm|sure|yep|yeah|yea|ya|no|n|cancel|nope|add|search|update|merge|\d+)$/i.test(reply.trim());
-        if (!isContinuation) {
-          pendingSelection = null;
-          pendingDuplicate = null;
-          pendingDelete = null;
-          pendingUpdate = null;
-          pendingAutofill = null;
-          pendingDedup = null;
-          pendingPlatformConfirmation = null;
-          pendingAIConfirmation = false;
-          console.log("A1: Cleared stale pending states — unrecognized command detected");
-        }
-      }
-
-      // 🧠 Fallback to AI if no command matched
-
-      // pendingAIConfirmation handler
-      let confirmOverride = '';
-
-      // Handle explicit confirmation or cancellation FIRST
-      if (pendingAIConfirmation) {
-        const rLower = reply.toLowerCase().trim();
-        const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative'];
-        const negatives = ['no', 'n', 'cancel', 'nope'];
-
-        // 🛡️ SMART NEGATE: Only trigger absolute cancellation if it's ONLY a negation word
-        if (negatives.includes(rLower)) {
-          pendingAIConfirmation = false;
-          addMsg('assistant', '\u274c No changes made.');
-          return;
-        }
-
-        if (affirmatives.includes(rLower)) {
-          if (pendingAIConfirmation.deferred_text) {
-            const updates = JSON.parse(pendingAIConfirmation.deferred_text);
-            const result = await applyUpdates(updates);
-            pendingAIConfirmation = false;
-            
-            if (result) {
-              const report = updates.map(u => {
-                const details = (u._changedDetail || []).join(', ');
-                return `- ${u.title}: ${details || 'no changes'}`;
-              }).join('\n');
-              addMsg('assistant', `✅ **Update Report**:\n${report}`);
-            } else {
-              addMsg('assistant', `✅ Done.`);
-            }
-            return;
-          }
-          // Fallback: no stored JSON, inject override for second AI call
-          confirmOverride = '\n[SYSTEM NOTE: User confirmed. Output NOW to apply the change. No summary, no confirmation prompt.]\n';
-          pendingAIConfirmation = false;
-        }
-      }
-
-      // A4: If no confirmation matched and they typed a command, break out of confirmation
-      if (pendingAIConfirmation && /^(merge|remove|delete|add|autofill|update|check|show|list|find|recommend|dedup|clear)\b/i.test(reply)) {
-        pendingAIConfirmation = false;
-      }
 
 
       try {
@@ -4476,31 +4822,8 @@ Output your answer conversationally.`;
             // 🔍 NEW: HIGH-PRIORITY SEARCH HANDOFF (Bypasses AI Metadata)
             const searchAction = updates.find(u => u.action === 'search');
             if (searchAction) {
-                const searchTitle = searchAction.title;
-                addTyping();
-                const tmdbData = await fetchTMDbData(searchTitle);
-                removeTyping();
-                if (tmdbData?.results?.length) {
-                   const sLow = searchTitle.toLowerCase();
-                   // High-Quality Filter: Keep only dated results
-                   let rawMatches = tmdbData.results.filter(r => (r.release_date || r.first_air_date));
-                   if (rawMatches.length === 0) rawMatches = tmdbData.results; // Fallback
-
-                   // 🚀 "EXACT MATCH" BOOST: Pull perfect title matches to the top
-                   rawMatches.sort((a, b) => {
-                       const aT = (a.title || a.name || '').toLowerCase();
-                       const bT = (b.title || b.name || '').toLowerCase();
-                       const aMatch = (aT === sLow) ? 1 : 0;
-                       const bMatch = (bT === sLow) ? 1 : 0;
-                       return bMatch - aMatch; // Exact matches come first
-                   });
-
-                   const results = rawMatches.slice(0, 5);
-                   pendingSelection = { results, statusHint: searchAction.status || 'Watchlist' }; 
-                   const options = results.map((r, i) => `${i + 1}. ${r.title || r.name} (${(r.release_date || r.first_air_date || '').split('-')[0] || '?'})`).join('\n');
-                   addMsg('assistant', `**Search Matches for "${searchTitle}":**\n\n${options}\n\nPick a number.`);
-                   return; // 🎯 BYPASS ALL AI METADATA
-                }
+                await triggerDiscoverySearch(searchAction.title, searchAction.status || 'Watchlist');
+                return;
             }
 
             addTyping(); // Pre-fetching TMDb data for standard add/update
@@ -4528,11 +4851,30 @@ Output your answer conversationally.`;
             }
             removeTyping();
 
+            // 🛡️ Context Lock: If the AI is asking us to add/update, lock onto that title now
+            const majorUpdate = updates.find(u => u.action === 'add' || u.action === 'update');
+            if (majorUpdate && majorUpdate.title) {
+              lastDiscussedTitle = majorUpdate.title;
+              console.log("🛡️ AI Context Lock (Metadata):", lastDiscussedTitle);
+            }
+
             const conversationalText = aiReply.split('<<<JSON')[0].trim();
 
             const finalDisplay = `${conversationalText}\n\n${previewBlock.trim()}\n\n${aiReply.split('JSON>>>')[1]?.trim() || (aiAsksConfirm ? "" : "Confirm?")}`;
 
-            pendingAIConfirmation = { deferred_text: JSON.stringify(updates) };
+            // 🛡️ NO-LOOP AUTO-COMMIT: Only if we are in a trusted pivot recursion
+            if (isPivotRecursion && (majorUpdate && (majorUpdate.action === 'update' || majorUpdate.action === 'add'))) {
+               console.log("🛡️ No-Loop Logic: Auto-committing trusted pivot update.");
+               const jsonResult = await applyUpdates(updates);
+               const finalReport = generateExecutionReport(jsonResult);
+               addMsg("ai", finalReport, jsonResult);
+               return;
+            }
+
+            pendingAIConfirmation = { 
+               deferred_text: JSON.stringify(updates),
+               deferred_updates: updates
+            };
             addMsg("ai", finalDisplay);
             return;
 
@@ -4543,6 +4885,15 @@ Output your answer conversationally.`;
         }
 
         if (aiAsksConfirm) {
+          // 🛡️ Context Lock (Conversational): Try to find title in reply if not already locked
+          if (!lastDiscussedTitle) {
+            const titleMatch = aiReply.match(/(?:"|“)([^"”]+)(?:"|”)/);
+            if (titleMatch) {
+              lastDiscussedTitle = titleMatch[1];
+              console.log("🛡️ AI Context Lock (Conversational):", lastDiscussedTitle);
+            }
+          }
+
           // 🛡️ 3g: Always capture the payload if JSON is present, otherwise fallback to Boolean
           pendingAIConfirmation = (hasJSON || aiReply.includes('<<<JSON')) 
             ? { deferred_text: aiReply } 
@@ -4747,13 +5098,7 @@ ${library.length === 0 ? 'Your library is empty — head to the Upload tab to im
     init();
   </script>
 
-  <script>
-    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-      navigator.serviceWorker.register('./service-worker.js')
-        .then(() => console.log("Service Worker registered"))
-        .catch(err => console.warn("Service worker failed", err));
-    }
-  </script>
+
 
 </body>
 
