@@ -2664,6 +2664,7 @@
       const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${seasonNum}?api_key=${key}`;
       try {
         const res = await fetch(url);
+        if (res.status === 404) return null; // 🛡️ Silently handle missing season data
         const data = await res.json();
         return data.episodes ? data.episodes.length : null;
       } catch (e) {
@@ -3700,9 +3701,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // PASS 2: Verb Match (Fallback)
       if (!verb && !field) {
-         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check|fix)\s+([\s\S]+)$/i);
+         const verbMatch = userText.match(/^(add|delete|remove|clear|mark|move|update|show|check|search|fix)\s+([\s\S]+)$/i);
          if (verbMatch) {
-            if (isConversational && (verbMatch[1].toLowerCase() === 'show' || verbMatch[1].toLowerCase() === 'check')) {
+            if (isConversational && (verbMatch[1].toLowerCase() === 'show' || verbMatch[1].toLowerCase() === 'check' || verbMatch[1].toLowerCase() === 'search')) {
                console.log("🗣️ Conversational 'Show' detected - bypassing local intercept.");
             } else {
                verb = verbMatch[1].toLowerCase();
@@ -3823,8 +3824,16 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
               }
             }
           }
-          // --- CASE 3: UPDATING / MAINTAINING ---
+          // --- CASE 3: UPDATING / MAINTAINING / INSPECTING ---
           else if (targetItem && (verb || val)) {
+             if (['show', 'check', 'lookup', 'search'].includes(verb)) {
+                let display = generateMetadataPreview(targetItem);
+                if (targetItem.notes) display += `\nNotes: ${targetItem.notes}`;
+                lastDiscussedTitle = targetItem.title;
+                addMsg('assistant', display);
+                return;
+             }
+
              if (!targetItem && lastDiscussedTitle) {
                 targetItem = findByTitle(lastDiscussedTitle);
                 if (targetItem) console.log(`🎯 Context Lock: Targeting last discussed title: ${targetItem.title}`);
@@ -3834,24 +3843,24 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              const changed = [];
              const snapshot = JSON.parse(JSON.stringify(targetItem));
 
-             if (mVal && statuses.some(s => mVal.toLowerCase().includes(s))) {
+             if (val && statuses.some(s => val.toLowerCase().includes(s))) {
                 const targetStatus = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
                 if (targetItem.status !== targetStatus) {
-                   targetItem.status = finalVal;
+                   targetItem.status = val;
                    changed.push('status');
                 }
-                finalField = 'status';
-                finalVal = targetStatus;
+                field = 'status';
+                val = targetStatus;
              }
 
              // 🛡️ 5a: Alias Mapping for local assignments
              const ALIASES = { 'date': 'date_watched', 'last watched': 'date_watched', 'last_watched': 'date_watched' };
-             if (finalField && ALIASES[finalField.toLowerCase()]) {
-                finalField = ALIASES[finalField.toLowerCase()];
+             if (field && ALIASES[field.toLowerCase()]) {
+                field = ALIASES[field.toLowerCase()];
              }
 
              // 🛡️ 5c: Direct Move Shield - Don't auto-sync data on simple move commands
-             if (!finalVal || finalVal.toLowerCase() === 'data' || finalVal.toLowerCase() === 'metadata') {
+             if (!val || val.toLowerCase() === 'data' || val.toLowerCase() === 'metadata') {
                 addTyping();
                 const updatedData = await enrichItemFromTMDb({...targetItem});
                 removeTyping();
