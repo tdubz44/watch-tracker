@@ -3654,8 +3654,8 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // --- 🛠️ PATTERN DEFINITIONS ---
       const VALID_FIELDS = ['status', 'progress', 'format', 'platform', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched', 'date', 'imdbid'];
-      const negatives = ['no', 'n', 'cancel', 'nope', 'stop', 'back', 'reset', 'clear'];
-      const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yup', 'yeah', 'yea', 'ya', 'add', 'update', 'go', 'apply', 'affirmative', "let's go", 'do it', 'correct', 'right', '1'];
+      const negatives = ['no', 'n', 'cancel', 'nope', 'stop', 'back'];
+      const affirmatives = ['yes', 'y', 'ok', 'okay', 'confirm', 'sure', 'yep', 'yup', 'yeah', 'yea', 'ya', 'affirmative', 'correct', 'right'];
       const cmdPattern = /^(add|delete|remove|clear|mark|move|update|upate|change|show|check|fix|autofill|fill)\b/i;
       const PRONOUNS = ['it', 'this', 'that', 'them', 'him', 'her', 'something', 'everything', 'watched', 'watching', 'watchlist', 'abandoned', 'mark'];
       const isConversational = /recommend|compare|help|what\s+is|tell\s+me|me\s+something|like\b|think\b|about\b|should|if\b/i.test(userText); 
@@ -3663,7 +3663,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       // --- PHASE 0: CONFIRMATIONS (Universal Smart Pivot) ---
       if (pendingAIConfirmation) {
-        if (affirmatives.includes(actionPart) || actionPart.startsWith("let's") || actionPart.startsWith("go ahead")) {
+        if (affirmatives.includes(actionPart) || actionPart.startsWith("let's")) {
           const deferred = pendingAIConfirmation.deferred_text;
           const updatesObj = pendingAIConfirmation.deferred_updates;
           
@@ -4515,6 +4515,7 @@ Output your answer conversationally.`;
 
         if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
           const selected = pendingSelection.results[choice - 1];
+          pendingAIConfirmation = null
           await fetchAndConfirmCard(selected, statusHint);
           return;
         }
