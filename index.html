@@ -2439,7 +2439,6 @@
     }
 
     async function applyUpdates(updates) {
-      saveHistoryState();
       let added = 0, updated = 0, skipped = 0;
       const skippedTitles = [];
       const updatedTitles = [];
@@ -3218,7 +3217,6 @@ JSON>>>
       }
 
       if (!jsonString) return null;
-      saveHistoryState();
       try {
         const cleaned = jsonString
           .replace(/\\n/g, '')
@@ -3324,7 +3322,6 @@ JSON>>>
     // LIBRARY NORMALIZATION (SILENT)
     // ============================================================
     async function runLibraryCleanup() {
-      saveHistoryState();
       addTyping();
       addMsg('assistant', "🧹 **Mega-Sweep Started...**\nNormalizing your entire library, silently filling missing data from TMDb, and prepping AI for unknown platforms.");
 
@@ -4138,7 +4135,6 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                     }
                 }
                 if (changed.length > 0) {
-                    saveHistoryState();
                     saveLibrary(); updateStats(); refreshSearch(); renderWatching();
                     const changes = changed.map(f => ({
                         field: f,
