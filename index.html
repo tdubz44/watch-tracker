@@ -3737,6 +3737,28 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         }
       }
 
+      // 🎯 PICKER PRIORITY: Handle number selections before anything else can intercept them
+      if (pendingSelection && pendingSelection.results && !pendingSelection.newItem) {
+        const choice = parseInt(userText.trim(), 10);
+        const statusHint = pendingSelection.statusHint;
+
+        if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
+          const selected = pendingSelection.results[choice - 1];
+          pendingAIConfirmation = null;
+          await fetchAndConfirmCard(selected, statusHint);
+          return;
+        }
+
+        if (isNegative(reply)) {
+          pendingSelection = null;
+          addMsg('assistant', '❌ Cancelled.');
+          return;
+        }
+
+        // Not a number, not a cancel — silently dismiss picker and let message fall through
+        pendingSelection = null;
+      }
+
       if (['undo', 'revert'].includes(reply)) {
         await performUndo();
         return;
@@ -3757,6 +3779,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
            pendingAIConfirmation = null;
            pendingPlatformConfirmation = null;
            pendingDuplicate = null;
+           pendingDedup = false;
            pendingAutofill = null;
            pendingDelete = null;
         }
@@ -4505,26 +4528,7 @@ Output your answer conversationally.`;
         return;
       }
 
-      if (pendingSelection && pendingSelection.results && !pendingSelection.newItem) {
-        const choice = parseInt(userText.trim(), 10);
-        const statusHint = pendingSelection.statusHint;
-
-        if (!isNaN(choice) && choice >= 1 && choice <= pendingSelection.results.length) {
-          const selected = pendingSelection.results[choice - 1];
-          pendingAIConfirmation = null
-          await fetchAndConfirmCard(selected, statusHint);
-          return;
-        }
-
-        if (isNegative(reply)) {
-          pendingSelection = null;
-          addMsg('assistant', '❌ Cancelled.');
-          return;
-        }
-
-        // Not a number, not a cancel — silently dismiss picker and let message fall through
-        pendingSelection = null;
-      }
+      // (Picker handler moved to top of sendMessage for priority interception)
 
       // ============================================================
       // REMOVE DUPLICATES COMMAND — local analysis + rich display
