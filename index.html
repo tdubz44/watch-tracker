@@ -4186,7 +4186,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
         }
 
         // 🛡️ NOISE SCRUBBER: Strip filler words from titles (e.g., "show me severence" -> "severence")
-        finalTitle = finalTitle.replace(/^(me|the|for|details for|it|this|that)\s+/i, '').trim();
+        finalTitle = finalTitle.replace(/^(me|for|details for)\s+/i, '').trim();
 
         // 🛡️ HIJACK GUARD: If conversational, bypass local resolution
         if (isConversational) {
