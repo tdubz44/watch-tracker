@@ -5140,6 +5140,7 @@ Output your answer conversationally.`;
       updateStats();
       renderSearch('');
       renderWatching();
+      if (library.length > 0) maybeDailyBackup(library); // 🔒 Daily backup — at most once per day
 
       // Boot confirmation in chat
       const chatWindow = document.getElementById('chatWindow');
