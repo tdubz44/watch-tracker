@@ -1282,6 +1282,7 @@
     let library = [];
     let convoHistory = [];
     let historyStack = []; // Session history for undo (cleared on refresh)
+    let redoStack = [];    // Session history for redo (cleared on any new change)
     let currentTab = 'assistant';
     let pendingSelection = null;
     let pendingUpdate = null;
@@ -1319,9 +1320,17 @@
 
 
     function saveHistoryState() {
-      // Limit history to last 20 states
+      // Full-library snapshot — for CSV/JSON/bulk imports and AI batch updates
       if (historyStack.length >= 20) historyStack.shift();
-      historyStack.push(JSON.stringify(library));
+      historyStack.push({ type: 'library', data: JSON.stringify(library) });
+      redoStack = []; // Any new change clears redo history
+    }
+
+    function saveItemSnapshot(item) {
+      // 🛡️ Item-level snapshot — saves ONLY the one item being changed
+      if (historyStack.length >= 20) historyStack.shift();
+      historyStack.push({ type: 'item', title: item.title, data: JSON.parse(JSON.stringify(item)) });
+      redoStack = []; // Any new change clears redo history
     }
 
     async function performUndo() {
@@ -1329,15 +1338,53 @@
         addMsg('assistant', "⚠️ Nothing to undo in this session.");
         return;
       }
-      
-      const currentLib = JSON.parse(JSON.stringify(library));
-      const prevState = historyStack.pop();
+      const UNDO_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched'];
+      const entry = historyStack.pop();
+
+      // Save current state to redoStack so the user can redo
+      redoStack.push({ type: 'library', data: JSON.stringify(library) });
+      if (redoStack.length > 20) redoStack.shift();
+
       try {
+        // --- Item-level undo ---
+        if (entry && typeof entry === 'object' && entry.type === 'item') {
+          const idx = library.findIndex(i => i.title === entry.title);
+          if (idx === -1) { addMsg('assistant', `⚠️ Couldn’t find “${entry.title}” to undo.`); return; }
+          const currentState = JSON.parse(JSON.stringify(library[idx]));
+          library[idx] = entry.data;
+          await saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+          const itemChanges = [];
+          UNDO_FIELDS.forEach(f => {
+            const oldV = String(currentState[f] || '').trim();
+            const newV = String(entry.data[f] || '').trim();
+            if (oldV.toLowerCase() !== newV.toLowerCase())
+              itemChanges.push({ field: f, oldVal: oldV || 'none', newVal: newV || 'none' });
+          });
+          const report = itemChanges.length > 0
+            ? generateExecutionReport({ updatedDetails: [{ title: entry.title, changes: itemChanges }] }) : '';
+          addMsg('assistant', '↩️ **Undo successful**\n\n' + (report || `No changes detected for **${entry.title}**.`));
+          return;
+        }
+        // --- Delete undo (restore a removed item) ---
+        if (entry && typeof entry === 'object' && entry.type === 'delete') {
+          library.push(entry.data);
+          await saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+          addMsg('assistant', `↩️ **Undo successful** — Restored **${entry.data.title}**`);
+          return;
+        }
+        // --- Add undo (remove a newly-added item) ---
+        if (entry && typeof entry === 'object' && entry.type === 'add') {
+          library = library.filter(i => i.title !== entry.title);
+          await saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+          addMsg('assistant', `↩️ **Undo successful** — Removed **${entry.title}** (addition undone)`);
+          return;
+        }
+        // --- Full library restore (CSV/JSON/bulk/AI batch) ---
+        const prevState = typeof entry === 'string' ? entry : (entry && entry.data ? entry.data : null);
+        if (!prevState) { addMsg('assistant', '⚠️ Unrecognised undo entry.'); return; }
+        const currentLib = JSON.parse(JSON.stringify(library));
         const restoredLib = JSON.parse(prevState);
-        
-        const addedTitles = [];    // titles being restored (were deleted)
-        const removedTitles = [];  // titles being removed (were just added)
-        const updatedDetails = []; // field-level changes
+        const addedTitles = [], removedTitles = [], updatedDetails = [];
 
         // Check for specific field changes in existing titles
         currentLib.forEach(currItem => {
@@ -1387,6 +1434,51 @@
       } catch (e) {
         console.error("Undo failed:", e);
         addMsg('assistant', "⚠️ Error during undo.");
+      }
+    }
+
+    async function performRedo() {
+      if (redoStack.length === 0) {
+        addMsg('assistant', "⚠️ Nothing to redo in this session.");
+        return;
+      }
+      const snapshot = redoStack.pop();
+      const currentLib = JSON.parse(JSON.stringify(library));
+      // Push current state to historyStack so user can undo the redo
+      historyStack.push({ type: 'library', data: JSON.stringify(library) });
+      if (historyStack.length > 20) historyStack.shift();
+      try {
+        const restoredLib = JSON.parse(snapshot.data);
+        const REDO_FIELDS = ['status', 'progress', 'platform', 'format', 'tone', 'notes', 'lifecycle', 'year', 'runtime', 'primary_genre', 'subgenres', 'seasons', 'date_watched'];
+        const addedTitles = [], removedTitles = [], updatedDetails = [];
+        currentLib.forEach(currItem => {
+          const restItem = restoredLib.find(ri => ri.title === currItem.title);
+          if (restItem) {
+            const itemChanges = [];
+            REDO_FIELDS.forEach(f => {
+              const oldV = String(currItem[f] || '').trim();
+              const newV = String(restItem[f] || '').trim();
+              if (oldV.toLowerCase() !== newV.toLowerCase())
+                itemChanges.push({ field: f, oldVal: oldV || 'none', newVal: newV || 'none' });
+            });
+            if (itemChanges.length > 0) updatedDetails.push({ title: currItem.title, changes: itemChanges });
+          }
+        });
+        restoredLib.filter(ri => !currentLib.some(ci => ci.title === ri.title)).forEach(t => addedTitles.push(t.title));
+        currentLib.filter(ci => !restoredLib.some(ri => ri.title === ci.title)).forEach(t => removedTitles.push(t.title));
+        library = restoredLib;
+        await saveLibrary(); updateStats(); refreshSearch(); renderWatching();
+        const hasChanges = addedTitles.length > 0 || removedTitles.length > 0 || updatedDetails.length > 0;
+        if (hasChanges) {
+          const removedLines = removedTitles.map(t => `<div class="execution-report">🗑️ Removed **${t}** (redo)</div>`).join('');
+          const report = generateExecutionReport({ addedTitles, updatedDetails }) + removedLines;
+          addMsg('assistant', '↪️ **Redo successful**\n\n' + report);
+        } else {
+          addMsg('assistant', '↪️ **Redo complete** — no field differences detected.');
+        }
+      } catch (e) {
+        console.error("Redo failed:", e);
+        addMsg('assistant', "⚠️ Error during redo.");
       }
     }
 
@@ -2098,7 +2190,7 @@
 
       if (s === 'watching' || s === 'watchin') return 'Watching';
       if (s === 'watchlist' || s === 'watch list') return 'Watchlist';
-      if (s === 'watched' || s === 'done' || s === 'complete' || s === 'completed' || s === 'finished' || s === 'finish') return 'Watched';
+      if (s === 'watched' || s === 'wathced' || s === 'watchd' || s === 'wathed' || s === 'wacthed' || s === 'done' || s === 'complete' || s === 'completed' || s === 'finished' || s === 'finish') return 'Watched';
       if (s === 'abandoned' || s === 'dropped' || s === 'stop' || s === 'stopped') return 'Abandoned';
       
       // Keyword fallback
@@ -2439,6 +2531,7 @@
     }
 
     async function applyUpdates(updates) {
+      saveHistoryState(); // 🛡️ Full-library snapshot before AI batch update
       let added = 0, updated = 0, skipped = 0;
       const skippedTitles = [];
       const updatedTitles = [];
@@ -3713,6 +3806,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
       if (pendingSelection && pendingSelection.newItem) {
         if (isAffirmative(reply)) {
           const item = pendingSelection.newItem;
+          historyStack.push({ type: 'add', title: item.title }); // ↩️ Undoable add
+          if (historyStack.length > 20) historyStack.shift();
+          redoStack = [];
           library.push(item);
           saveLibrary(); updateStats(); refreshSearch(); renderWatching();
           lastDiscussedTitle = item.title; 
@@ -3761,6 +3857,10 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
       if (['undo', 'revert'].includes(reply)) {
         await performUndo();
+        return;
+      }
+      if (reply === 'redo') {
+        await performRedo();
         return;
       }
 
@@ -3836,8 +3936,9 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
               if (mField || match.suffixContext) {
                  if (match.suffixContext && !mField) mField = "progress";
 
-                 saveHistoryState();
-                 const oldVal = targetItem[mField] || 'none';
+
+                  saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot
+                  const oldVal = targetItem[mField] || 'none';
                  
                  if (mField === 'progress') {
                    const combinedVal = match.suffixContext ? `${match.suffixContext} ${mVal}` : mVal;
@@ -4088,7 +4189,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                 const actualField = fieldLower === 'season' ? 'progress' : (fieldLower === 'note' ? 'notes' : fieldLower);
 
                 if (VALID_FIELDS.includes(actualField)) {
-                  saveHistoryState();
+                  saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot
                   const oldVal = targetItem[actualField] || 'none';
                   targetItem[actualField] = '';
                   saveLibrary(); updateStats(); refreshSearch(); renderWatching();
@@ -4146,6 +4247,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
 
              // 🛡️ 5c: Direct Move Shield - Don't auto-sync data on simple move commands
              if (!val || val.toLowerCase() === 'data' || val.toLowerCase() === 'metadata') {
+                saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot before TMDb enrichment
                 addTyping();
                 const updatedData = await enrichItemFromTMDb({...targetItem});
                 removeTyping();
@@ -4192,6 +4294,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
              }
              
              if (finalField) {
+                saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot BEFORE any modification
                 // Schema Mapping & Normalization
                 const fLow = finalField.toLowerCase();
                 let actualField = fLow;
@@ -4244,7 +4347,7 @@ Example: [{"title": "Severance", "platform": "Apple TV"}]`;
                    finalVal = resolveDateAlias(finalVal);
                 }
 
-                saveHistoryState();
+                saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot
                 const oldVal = targetItem[actualField] || 'none';
                 
                 targetItem[actualField] = finalVal;
@@ -4333,7 +4436,7 @@ Output your answer conversationally.`;
                 
                 // If the user's text was affirmative (e.g. "Yes, except..."), apply it now
                 if (isAffirmative(reply.split(',')[0]) || reply.toLowerCase().includes('yes')) {
-                  saveHistoryState();
+                  saveItemSnapshot(targetItem); // 🛡️ Item-level snapshot
                   newUpdates.forEach(upd => {
                      const item = library.find(i => i.title === upd.title);
                      if (item) item.platform = upd.platform;
@@ -4466,6 +4569,9 @@ Output your answer conversationally.`;
 
         if (isAffirmative(reply)) {
 
+          historyStack.push({ type: 'delete', data: JSON.parse(JSON.stringify(pendingDelete)) }); // ↩️ Undoable delete
+          if (historyStack.length > 20) historyStack.shift();
+          redoStack = [];
           library = library.filter(item => item !== pendingDelete);
 
           saveLibrary();
