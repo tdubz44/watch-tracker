@@ -2188,16 +2188,32 @@
       // 🛡️ Scrubbing Logic: strip leading/trailing "is ", "status "
       s = s.replace(/^(is|status)\s+/i, '').trim();
 
+      // Exact matches (including common aliases)
       if (s === 'watching' || s === 'watchin') return 'Watching';
       if (s === 'watchlist' || s === 'watch list') return 'Watchlist';
-      if (s === 'watched' || s === 'wathced' || s === 'watchd' || s === 'wathed' || s === 'wacthed' || s === 'done' || s === 'complete' || s === 'completed' || s === 'finished' || s === 'finish') return 'Watched';
+      if (s === 'watched' || s === 'done' || s === 'complete' || s === 'completed' || s === 'finished' || s === 'finish') return 'Watched';
       if (s === 'abandoned' || s === 'dropped' || s === 'stop' || s === 'stopped') return 'Abandoned';
       
-      // Keyword fallback
+      // Keyword substring fallback
       if (s.includes('watched') || s.includes('complete') || s.includes('finish') || s.includes('done')) return 'Watched';
       if (s.includes('watching')) return 'Watching';
       if (s.includes('watchlist')) return 'Watchlist';
       if (s.includes('abandoned') || s.includes('dropped')) return 'Abandoned';
+
+      // 🧠 Fuzzy fallback — catches transpositions & typos up to 2 edits away
+      // Safe: minimum distance between any two valid statuses is 4
+      const fuzzyTargets = [
+        { label: 'Watching',  key: 'watching' },
+        { label: 'Watched',   key: 'watched' },
+        { label: 'Watchlist', key: 'watchlist' },
+        { label: 'Abandoned', key: 'abandoned' },
+      ];
+      let bestLabel = null, bestDist = Infinity;
+      for (const { label, key } of fuzzyTargets) {
+        const d = levenshtein(s, key);
+        if (d < bestDist) { bestDist = d; bestLabel = label; }
+      }
+      if (bestLabel && bestDist <= 2) return bestLabel;
 
       console.warn(`🎯 Invalid status "${val}" corrected to "Watchlist"`);
       return 'Watchlist';
@@ -2429,11 +2445,42 @@
          detectedSuffix = suffixMatch[2].trim();
       }
 
-      const exact = findByTitle(searchTitle);
-      if (exact) {
-        return { item: exact, exact: true, fuzzy: false, suffixContext: detectedSuffix };
+      // Helper: find ALL library items whose normalized title matches (not just the first)
+      const findAllByTitle = (t) => {
+        const needle = normalizeTitle(t);
+        return library.filter(x => x.title && normalizeTitle(x.title) === needle);
+      };
+
+      // 1. Full exact match (handles titles stored WITH year, e.g. "Merlin (2008)")
+      const fullMatches = findAllByTitle(searchTitle);
+      if (fullMatches.length === 1) {
+        return { item: fullMatches[0], exact: true, fuzzy: false, suffixContext: detectedSuffix };
+      }
+      if (fullMatches.length > 1) {
+        // Multiple entries share this exact name — return first (no year qualifier given)
+        return { item: fullMatches[0], exact: true, fuzzy: false, suffixContext: detectedSuffix };
       }
 
+      // 2. 🎯 Year qualifier fallback — "Merlin 2008" or "Merlin (2008)"
+      // Only runs when full exact match found nothing.
+      // Year range 1900–2099 avoids matching non-year numbers.
+      const yearQualMatch = searchTitle.match(/^(.+?)\s+\((\d{4})\)$/) ||
+                            searchTitle.match(/^(.+?)\s+((?:19|20)\d{2})$/);
+      if (yearQualMatch) {
+        const baseTitle = yearQualMatch[1].trim();
+        const year      = yearQualMatch[2];
+        if (baseTitle) {
+          const baseMatches = findAllByTitle(baseTitle);
+          if (baseMatches.length > 0) {
+            // Prefer the item whose year field matches the qualifier
+            const byYear  = baseMatches.find(x => String(x.year || '') === year);
+            const resolved = byYear || baseMatches[0]; // fallback to first if no year field match
+            return { item: resolved, exact: true, fuzzy: false, suffixContext: detectedSuffix };
+          }
+        }
+      }
+
+      // 3. Fuzzy fallback
       const fuzzy = findByTitleFuzzy(searchTitle);
       if (fuzzy) {
         return { item: fuzzy, exact: false, fuzzy: true, suffixContext: detectedSuffix };
